@@ -10,12 +10,16 @@ import { TravelConnect } from "./TravelConnect";
 // days — the actual itinerary from travel.jascui.com (each planned event with
 // its place and booking status, flights, stays, cars and cancellation
 // deadlines). Drag on empty space to pick a time in 30-minute steps and type a
-// task or event right there; drag a task or event to move it. The day shown is
-// the one picked on any calendar (data.selectedDay).
+// task or event right there; drag a task or event to move it. On touch screens
+// both start with a press-and-hold, so scrolling past never triggers them. A
+// red line marks the current time. The day shown is the one picked on any
+// calendar (data.selectedDay).
 
 const HOUR_PX = 48;
 const SLOT = 0.5; // hours
 const SLOT_PX = HOUR_PX * SLOT;
+const HOLD_MS = 450; // press-and-hold before a touch picks or moves
+const HOLD_SLOP = 8; // px a finger may wander during the hold
 const EVENT_COLOR = "#7fb894";
 const TRIP_COLOR = "#0f9d8a";
 
@@ -150,6 +154,46 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
   const [compose, setCompose] = useState<{ start: number; end: number } | null>(null);
   // Moving a block: its key and preview start.
   const [moving, setMoving] = useState<{ key: string; startY: number; orig: number; dur: number; preview: number; moveTo: (s: number) => void; onOpen?: () => void } | null>(null);
+  // A touch press waiting out HOLD_MS; and a short guard so the tap that ends a touch move doesn't also open the item.
+  const hold = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const justMoved = useRef(false);
+
+  // The current time, for the red line: refreshed every 30 seconds.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  function beginHold(e: React.PointerEvent, fire: () => void) {
+    cancelHold();
+    const { clientX: x, clientY: y } = e;
+    hold.current = {
+      x,
+      y,
+      timer: setTimeout(() => {
+        hold.current = null;
+        navigator.vibrate?.(12);
+        fire();
+      }, HOLD_MS),
+    };
+  }
+  function cancelHold() {
+    if (hold.current) clearTimeout(hold.current.timer);
+    hold.current = null;
+  }
+  function holdMoved(e: React.PointerEvent) {
+    if (hold.current && Math.hypot(e.clientX - hold.current.x, e.clientY - hold.current.y) > HOLD_SLOP) cancelHold();
+  }
+
+  // While a touch is picking or moving, the page mustn't scroll under the finger.
+  const touching = !!(pick || moving);
+  useEffect(() => {
+    if (!touching) return;
+    const stop = (e: TouchEvent) => e.preventDefault();
+    window.addEventListener("touchmove", stop, { passive: false });
+    return () => window.removeEventListener("touchmove", stop);
+  }, [touching]);
 
   // Open on the morning (or the current hour) rather than midnight.
   useEffect(() => {
@@ -166,15 +210,18 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     return Math.max(0, Math.min(47, Math.floor((clientY - top) / SLOT_PX)));
   };
 
-  // Mouse/pen: press on empty space and drag to cover a range. Touch: tap a slot (dragging scrolls).
+  // Mouse/pen: press on empty space and drag to cover a range. Touch: press and hold, then drag.
   function startPick(e: React.PointerEvent) {
     if (e.target !== lanesRef.current) return;
     const slot = slotAt(e.clientY);
-    setCompose(null);
     if (e.pointerType === "touch") {
-      setCompose({ start: slot * SLOT, end: slot * SLOT + 1 });
+      beginHold(e, () => {
+        setCompose(null);
+        setPick({ anchor: slot, current: slot });
+      });
       return;
     }
+    setCompose(null);
     e.preventDefault();
     setPick({ anchor: slot, current: slot });
   }
@@ -192,11 +239,14 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
       setCompose({ start: a * SLOT, end: a === b ? a * SLOT + 1 : (b + 1) * SLOT });
       setPick(null);
     };
+    const onCancel = () => setPick(null);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
   }, [pick]);
 
@@ -207,16 +257,23 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
       const preview = Math.max(0, Math.min(24 - moving.dur, moving.orig + delta));
       if (preview !== moving.preview) setMoving({ ...moving, preview });
     };
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
       if (moving.preview !== moving.orig) moving.moveTo(moving.preview);
-      else moving.onOpen?.();
+      else if (e.pointerType !== "touch") moving.onOpen?.();
+      if (e.pointerType === "touch") {
+        justMoved.current = true;
+        setTimeout(() => (justMoved.current = false), 400);
+      }
       setMoving(null);
     };
+    const onCancel = () => setMoving(null);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
   }, [moving]);
 
@@ -285,7 +342,8 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
 
   const blocks = layLanes(timed);
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  const nowHour = rel === 0 ? hourOf(data.now.toISOString()) : null;
+  const nowIso = new Date(nowTick).toISOString();
+  const nowHour = localDateKey(new Date(nowTick), tz) === date ? hourOf(nowIso) : null;
   const picked = pick ? { start: Math.min(pick.anchor, pick.current) * SLOT, end: (Math.max(pick.anchor, pick.current) + 1) * SLOT } : compose;
 
   return (
@@ -360,8 +418,20 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
         {hours.map((h) => (
           <div key={`h${h}`} className="half-hour" style={{ top: (h + SLOT) * HOUR_PX }} />
         ))}
-        {nowHour != null && <div className="now-line" style={{ top: nowHour * HOUR_PX }} />}
-        <div ref={lanesRef} className={`timeline-lanes ${pick ? "picking" : ""}`} onPointerDown={startPick}>
+        {nowHour != null && (
+          <div className="now-line" style={{ top: nowHour * HOUR_PX }} aria-label="Now">
+            <span className="now-label">{clock(Math.floor(nowHour * 60) / 60)}</span>
+          </div>
+        )}
+        <div
+          ref={lanesRef}
+          className={`timeline-lanes ${pick ? "picking" : ""}`}
+          onPointerDown={startPick}
+          onPointerMove={holdMoved}
+          onPointerUp={cancelHold}
+          onPointerCancel={cancelHold}
+          onContextMenu={(e) => e.preventDefault()}
+        >
           {picked && (
             <div className="pick" style={{ top: picked.start * HOUR_PX, height: (picked.end - picked.start) * HOUR_PX }}>
               <span>
@@ -400,12 +470,23 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
                 className={`block ${moving?.key === b.key ? "moving" : ""}`}
                 style={style}
                 onPointerDown={(e) => {
-                  if (!b.moveTo || e.pointerType === "touch" || e.button !== 0) return;
+                  if (!b.moveTo || e.button !== 0) return;
+                  const begin = (startY: number) =>
+                    setMoving({ key: b.key, startY, orig: b.start, dur: b.end - b.start, preview: b.start, moveTo: b.moveTo!, onOpen: b.onOpen });
+                  if (e.pointerType === "touch") {
+                    const y = e.clientY;
+                    beginHold(e, () => begin(y));
+                    return;
+                  }
                   e.preventDefault();
-                  setMoving({ key: b.key, startY: e.clientY, orig: b.start, dur: b.end - b.start, preview: b.start, moveTo: b.moveTo, onOpen: b.onOpen });
+                  begin(e.clientY);
                 }}
+                onPointerMove={holdMoved}
+                onPointerUp={cancelHold}
+                onPointerCancel={cancelHold}
                 onClick={(e) => {
-                  // Mouse clicks open through the drag handler (no movement = open); touch taps open here.
+                  // Mouse clicks open through the drag handler (no movement = open); touch taps and keyboard open here.
+                  if (justMoved.current) return;
                   if ((e.nativeEvent as PointerEvent).pointerType === "touch" || e.detail === 0) b.onOpen?.();
                 }}
               >
