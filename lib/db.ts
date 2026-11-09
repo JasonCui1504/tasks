@@ -69,6 +69,34 @@ const SCHEMA = [
     sent_at TEXT NOT NULL,
     UNIQUE (owner, key)
   )`,
+  `CREATE TABLE IF NOT EXISTS gift_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    store TEXT NOT NULL,
+    balance REAL NOT NULL DEFAULT 0,
+    initial_amount REAL,
+    expires_on TEXT,
+    code TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS gift_cards_owner ON gift_cards(owner, status)`,
+  `CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    title TEXT NOT NULL,
+    starts_at TEXT NOT NULL,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    location TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    reminders TEXT NOT NULL DEFAULT '[]',
+    reminders_from TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS events_owner_start ON events(owner, starts_at)`,
 ];
 
 let clientPromise: Promise<Client> | null = null;

@@ -129,3 +129,49 @@ export type SentNotification = {
   url: string;
   sentAt: string;
 };
+
+// ---- gift cards ----
+
+export type GiftCard = {
+  id: number;
+  /** Where it's spent: "Amazon", "Starbucks", "Visa gift card"… */
+  store: string;
+  balance: number;
+  /** What was on it originally, for "spent $X of $Y". */
+  initialAmount: number | null;
+  /** "YYYY-MM-DD", or null if it doesn't expire. */
+  expiresOn: string | null;
+  /** Card number / PIN / claim code, free text. */
+  code: string;
+  notes: string;
+  status: "active" | "used";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GiftCardInput = Partial<Pick<GiftCard, "store" | "balance" | "initialAmount" | "expiresOn" | "code" | "notes">>;
+
+/** Days before a gift card expires to send a heads-up. */
+export const GIFT_CARD_ALERT_DAYS = [30, 7, 1];
+
+// ---- events ----
+
+export type CalendarEvent = {
+  id: number;
+  title: string;
+  /** UTC ISO instant. All-day events are stored at 9:00 local on that date. */
+  startsAt: string;
+  allDay: boolean;
+  location: string;
+  notes: string;
+  /** Minutes before the start, like task reminders. */
+  reminders: number[];
+  createdAt: string;
+  updatedAt: string;
+  /** Reminders scheduled before this moment are skipped (they were already past when set). */
+  remindersFrom: string;
+};
+
+export type CalendarEventInput = Partial<Pick<CalendarEvent, "title" | "startsAt" | "allDay" | "location" | "notes" | "reminders">>;
+
+export const DEFAULT_EVENT_REMINDERS = [1440, 60];

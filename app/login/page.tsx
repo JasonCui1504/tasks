@@ -4,21 +4,26 @@ import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
 
+// Same look as the sign-in pages on jascui.com and travel.jascui.com: a quiet
+// card, a small uppercase eyebrow, a light headline, labelled fields.
 export default async function LoginPage() {
   if (await currentUser()) redirect("/");
   const setup = !(await hasAnyUser());
   return (
     <main className="login">
       <div className="login-card">
-        <div className="login-mark" aria-hidden>
-          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </div>
-        <h1>{setup ? "Create your account" : "Tasks"}</h1>
-        <p className="muted">
-          {setup
-            ? "First time here. Enter the setup code (CRON_SECRET from your Vercel settings) and choose a username and password."
-            : "Sign in to see what’s outstanding."}
+        <p className="eyebrow">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+            <path d="M4 7h3M4 12h3M4 17h3M10 7.5l1.6 1.6L15 5.7M10 12h10M10 17h10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Tasks
         </p>
+        <h1>{setup ? "Create your account" : "Welcome back"}</h1>
+        {setup && (
+          <p className="login-note">
+            First time here. Enter the setup code (the CRON_SECRET value from your Vercel settings), then choose a username and password.
+          </p>
+        )}
         <LoginForm setup={setup} />
       </div>
     </main>

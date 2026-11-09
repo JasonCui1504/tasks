@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDateKey } from "@/lib/time";
+import { Field, splitLocal } from "./form";
 import {
   REMINDER_PRESETS,
   REPEATS,
@@ -29,15 +30,6 @@ type Props = {
 };
 
 const ALL_DAY_HOUR = "09:00";
-
-/** "YYYY-MM-DD" and "HH:MM" in the device's zone. */
-function splitLocal(iso: string | null, allDay: boolean): { date: string; time: string } {
-  if (!iso) return { date: "", time: "" };
-  const d = new Date(iso);
-  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const time = allDay ? "" : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return { date, time };
-}
 
 function localInput(iso: string | null): string {
   if (!iso) return "";
@@ -298,15 +290,3 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    // A div, not a label: a label would forward stray taps to its first chip.
-    <div className="field" role="group" aria-label={label}>
-      <span className="field-label">
-        {label}
-        {hint && <span className="muted"> · {hint}</span>}
-      </span>
-      {children}
-    </div>
-  );
-}

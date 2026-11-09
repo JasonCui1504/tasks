@@ -2,6 +2,7 @@ import { getDb } from "./db";
 import { sendToUser, type PushPayload } from "./push";
 import { getSettings, listTasks } from "./tasks";
 import { getTrips } from "./travel";
+import { listEvents, listGiftCards } from "./lists";
 import {
   daysBetween,
   formatDateKey,
@@ -12,7 +13,17 @@ import {
   relativeDue,
   zonedParts,
 } from "./time";
-import { REPEATS, URGENCIES, categoryInfo, type Settings, type Task, type Trip } from "./types";
+import {
+  GIFT_CARD_ALERT_DAYS,
+  REPEATS,
+  URGENCIES,
+  categoryInfo,
+  type CalendarEvent,
+  type GiftCard,
+  type Settings,
+  type Task,
+  type Trip,
+} from "./types";
 
 // Decides which notifications are due right now and sends each exactly once.
 // Runs from /api/cron every few minutes. Every decision is recorded in
@@ -28,7 +39,9 @@ import { REPEATS, URGENCIES, categoryInfo, type Settings, type Task, type Trip }
 // - Repeating tasks set to auto-renew (subscriptions, autopay bills) roll
 //   forward on their own once the date passes, with a "renewed" note.
 // - Trips from travel.jascui.com get a heads-up 2 weeks, 3 days and 1 day out.
-// - A morning summary lists what's due today and overdue.
+// - Events remind at (start − offset), like tasks.
+// - Gift cards with money left get a heads-up 30, 7 and 1 day before they expire.
+// - A morning summary lists what's due today and overdue, and today's events.
 
 export type Candidate = { key: string; taskId: number | null; payload: PushPayload; critical: boolean };
 
@@ -189,7 +202,51 @@ function tripCandidates(trips: Trip[], tasks: Task[], now: Date, s: Settings): C
   return out;
 }
 
-function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings): Candidate | null {
+export function eventCandidates(e: CalendarEvent, now: Date, s: Settings): Candidate[] {
+  const start = Date.parse(e.startsAt);
+  const from = Date.parse(e.remindersFrom);
+  const url = `/?event=${e.id}`;
+  const tag = `event-${e.id}`;
+  const fired = e.reminders
+    .map((m) => ({ m, at: start - m * 60_000 }))
+    .filter((r) => r.at <= now.getTime() && r.at >= from - 60_000 && now.getTime() < start + (e.allDay ? DAY : HOUR))
+    .sort((a, b) => b.at - a.at);
+  if (!fired.length) return [];
+  const near = Math.abs(start - now.getTime()) < 30 * 60_000 && !e.allDay;
+  const rel = near ? "now" : relativeDue(new Date(start), now, s.timeZone, e.allDay);
+  const title = rel === "now" ? `${e.title} is starting` : `${e.title} ${rel === "today" ? "is today" : rel}`;
+  const body = join(formatDue(new Date(start), s.timeZone, e.allDay), e.location, e.notes && e.notes.slice(0, 80));
+  return fired.map((r, i) => ({
+    key: `e:${e.id}:${e.startsAt}:${r.m}`,
+    taskId: null,
+    critical: false,
+    payload: i === 0 ? { title, body, url, tag } : { title: "", body: "", url, tag: "skip" },
+  }));
+}
+
+export function giftCardCandidates(c: GiftCard, now: Date, s: Settings): Candidate[] {
+  if (c.status !== "active" || !c.expiresOn || c.balance <= 0) return [];
+  const days = daysBetween(localDateKey(now, s.timeZone), c.expiresOn);
+  if (days < 0) return [];
+  const hit = GIFT_CARD_ALERT_DAYS.filter((d) => days <= d).sort((a, b) => a - b);
+  const when = days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+  return hit.map((d, i) => ({
+    key: `g:${c.id}:${c.expiresOn}:${d}`,
+    taskId: null,
+    critical: false,
+    payload:
+      i === 0
+        ? {
+            title: `${c.store} gift card expires ${when}`,
+            body: `${money(c.balance)} left to spend by ${formatDateKey(c.expiresOn!)}.`,
+            url: `/?card=${c.id}`,
+            tag: `card-${c.id}`,
+          }
+        : { title: "", body: "", url: "/", tag: "skip" },
+  }));
+}
+
+function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings, events: CalendarEvent[] = []): Candidate | null {
   if (s.digestHour == null) return null;
   const p = zonedParts(now, s.timeZone);
   if (p.h < s.digestHour || p.h >= s.digestHour + 3) return null;
@@ -198,11 +255,16 @@ function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings): 
   const overdue = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) < today);
   const dueToday = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) === today);
   const tripToday = trips.filter((t) => t.startDate === today);
-  if (!overdue.length && !dueToday.length && !tripToday.length) return null;
+  const eventsToday = events.filter((e) => localDateKey(new Date(e.startsAt), s.timeZone) === today);
+  if (!overdue.length && !dueToday.length && !tripToday.length && !eventsToday.length) return null;
   const head = [
     dueToday.length && `${dueToday.length} due today`,
     overdue.length && `${overdue.length} overdue`,
     tripToday.length && `${tripToday[0].name} starts today`,
+    eventsToday.length &&
+      (eventsToday.length === 1
+        ? `${eventsToday[0].title}${eventsToday[0].allDay ? "" : ` at ${new Date(eventsToday[0].startsAt).toLocaleTimeString("en-US", { timeZone: s.timeZone, hour: "numeric", minute: "2-digit" })}`}`
+        : `${eventsToday.length} events`),
   ]
     .filter(Boolean)
     .join(", ");
@@ -267,12 +329,16 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
     if (renewed.length) tasks = await listTasks(owner);
     const open = tasks.filter((t) => t.status === "open");
 
+    const [events, cards] = await Promise.all([listEvents(owner), listGiftCards(owner)]);
+
     const candidates: Candidate[] = [
       ...renewed,
       ...open.flatMap((t) => taskCandidates(t, now, s, trips)),
       ...(s.tripAlerts ? tripCandidates(trips, open, now, s) : []),
+      ...events.flatMap((e) => eventCandidates(e, now, s)),
+      ...cards.flatMap((c) => giftCardCandidates(c, now, s)),
     ];
-    const digest = digestCandidate(open, trips, now, s);
+    const digest = digestCandidate(open, trips, now, s, events);
     if (digest) candidates.push(digest);
 
     // Overdue + due today, for the Home Screen icon badge.
