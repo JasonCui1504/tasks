@@ -1,4 +1,4 @@
-import type { Trip, TripItinerary } from "./types";
+import type { Trip } from "./types";
 
 // Upcoming trips come from travel.jascui.com's read-only feed — the same one
 // Llamabear uses. It returns only trip names and dates, authenticated by the
@@ -48,35 +48,3 @@ export async function getTrips(): Promise<Trip[]> {
 }
 
 export const TRAVEL_URL = TRAVEL_ORIGIN;
-
-let itinCache: { at: number; trips: TripItinerary[] } | null = null;
-
-/**
- * Full itineraries (events, flights, stays, meals) for current and upcoming
- * trips, from travel.jascui.com's /api/feed/itinerary. Empty when the feed
- * isn't configured, is down, or the travel app doesn't have that endpoint yet.
- */
-export async function getItineraries(): Promise<TripItinerary[]> {
-  const secret = process.env.TRAVEL_FEED_SECRET;
-  if (!secret) return [];
-  if (itinCache && Date.now() - itinCache.at < TTL_MS) return itinCache.trips;
-  try {
-    const res = await fetch(`${TRAVEL_ORIGIN}/api/feed/itinerary`, {
-      headers: { Authorization: `Bearer ${secret}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (res.status === 404) {
-      itinCache = { at: Date.now(), trips: [] };
-      return [];
-    }
-    if (!res.ok) throw new Error(`travel itinerary feed ${res.status}`);
-    const data = (await res.json()) as { trips?: Omit<TripItinerary, "url">[] };
-    const trips = (data.trips ?? []).map((t) => ({ ...t, url: `${TRAVEL_ORIGIN}/trips/${t.id}` }));
-    itinCache = { at: Date.now(), trips };
-    return trips;
-  } catch (err) {
-    console.warn("Couldn't load itineraries from the travel app", err);
-    return itinCache?.trips ?? [];
-  }
-}
