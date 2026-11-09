@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { daysBetween, formatDateKey, localDateKey, money } from "@/lib/time";
 import { categoryInfo, contactDueOn } from "@/lib/types";
 import type { Actions, Data } from "./shared";
@@ -135,10 +135,16 @@ function Agenda({ date, entries, actions, today }: { date: string; entries: Entr
 }
 
 /** The Calendar tab (full) or the side-panel calendar (`mini`). */
-export function CalendarView({ data, actions, mini }: { data: Data; actions: Actions; mini?: boolean }) {
+export function CalendarView({ data, actions, mini, noAgenda }: { data: Data; actions: Actions; mini?: boolean; noAgenda?: boolean }) {
   const today = localDateKey(data.now, data.tz);
-  const [month, setMonth] = useState(today.slice(0, 7));
-  const [selected, setSelected] = useState(today);
+  const selected = data.selectedDay;
+  const setSelected = actions.selectDay;
+  const [month, setMonth] = useState(selected.slice(0, 7));
+  // Follow the picked day when it moves to another month (e.g. from the Day view's arrows).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keeps the shown month in step with the shared day
+    setMonth(selected.slice(0, 7));
+  }, [selected]);
   const entries = useEntries(data, actions);
   const cells = monthDays(month);
 
@@ -194,7 +200,7 @@ export function CalendarView({ data, actions, mini }: { data: Data; actions: Act
           );
         })}
       </div>
-      <Agenda date={selected} entries={entries.get(selected) ?? []} actions={actions} today={today} />
+      {!noAgenda && <Agenda date={selected} entries={entries.get(selected) ?? []} actions={actions} today={today} />}
     </div>
   );
 }
