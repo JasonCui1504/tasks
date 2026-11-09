@@ -15,6 +15,7 @@ import {
   type Task,
   type TaskInput,
   type Trip,
+  type TripItinerary,
 } from "@/lib/types";
 import { api } from "./api-client";
 import { CalendarView } from "./CalendarView";
@@ -28,6 +29,8 @@ import { UrgentCallout } from "./Urgent";
 import { GridWorkspace } from "./Grid";
 import { TasksTab, taskCounts } from "./TasksTab";
 import { TodayList } from "./Today";
+import { DayView } from "./DayView";
+import { TopInfo } from "./TopInfo";
 import { registerWorker, setBadge } from "./push-client";
 import { bucketOf, type Actions, type Data, type Tab } from "./shared";
 
@@ -77,6 +80,16 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [focusTrip, setFocusTrip] = useState<number | null>(null);
+  const [itineraries, setItineraries] = useState<TripItinerary[]>([]);
+  const [selectedDay, setSelectedDay] = useState(() => localDateKey(new Date(), initialSettings.timeZone));
+
+  // Trip itineraries load after the page, so a slow travel app never holds it up.
+  const loadItineraries = useCallback(async () => {
+    if (!travel.configured) return;
+    try {
+      setItineraries((await api<{ itineraries: TripItinerary[] }>("/api/itinerary", "GET")).itineraries);
+    } catch {}
+  }, [travel.configured]);
 
   // Keep relative times fresh, use this device's time zone, and refetch when the app comes back to the foreground.
   const refresh = useCallback(async () => {
@@ -93,9 +106,10 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       setCards(cards);
       setEvents(events);
       setContacts(contacts);
+      loadItineraries();
     } catch {}
     setNow(new Date());
-  }, []);
+  }, [loadItineraries]);
 
   useEffect(() => {
     const local = browserTz();
@@ -105,6 +119,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       api<{ settings: Settings }>("/api/settings", "PUT", { timeZone: local }).then((r) => setSettings(r.settings)).catch(() => {});
     }
     registerWorker();
+    loadItineraries();
     const tick = setInterval(() => setNow(new Date()), 60_000);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
@@ -112,7 +127,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       clearInterval(tick);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [initialSettings.timeZone, refresh]);
+  }, [initialSettings.timeZone, refresh, loadItineraries]);
 
   const setTab = useCallback((next: Tab) => {
     setTabState(next);
@@ -407,8 +422,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // ---- what every view gets ----
 
   const data: Data = useMemo(
-    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip }),
-    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList, focusTrip],
+    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip, itineraries, selectedDay }),
+    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList, focusTrip, itineraries, selectedDay],
   );
 
   const actions: Actions = useMemo(
@@ -424,6 +439,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       openContact: (contact) => setContactSheet({ contact }),
       newContact: () => setContactSheet({ contact: null }),
       logContact: logContactToday,
+      selectDay: setSelectedDay,
       goTab: (next, focus) => {
         setTab(next);
         if (focus?.trip != null) setFocusTrip(focus.trip);
@@ -479,8 +495,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
         <GridWorkspace
           data={data}
           actions={actions}
-          onToast={(text) => setToast({ text })}
-          dateLine={dateLine}
+          onToast={(text, undo) => setToast({ text, undo })}
           topActions={
             <>
               {topActions}
@@ -507,6 +522,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           </div>
         </header>
 
+        <TopInfo data={data} compact />
+
         <nav className="tabs" role="tablist" aria-label="Views">
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
@@ -521,9 +538,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           {tab === "today" && <TodayList data={data} actions={actions} />}
           {tab === "tasks" && <TasksTab data={data} actions={actions} />}
           {tab === "calendar" && (
-            <section className="card-surface">
-              <CalendarView data={data} actions={actions} />
-            </section>
+            <>
+              <section className="card-surface">
+                <CalendarView data={data} actions={actions} noAgenda />
+              </section>
+              <section className="card-surface day-section">
+                <DayView data={data} actions={actions} />
+              </section>
+            </>
           )}
           {tab === "events" && <EventsView events={events} now={now} tz={tz} onOpen={actions.openEvent} onNew={() => actions.newEvent()} />}
           {tab === "trips" && <TripsView data={data} actions={actions} />}

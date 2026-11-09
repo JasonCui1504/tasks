@@ -14,6 +14,7 @@ import {
   type Task,
   type TaskInput,
   type Trip,
+  type TripItinerary,
 } from "@/lib/types";
 
 export type Tab = "today" | "tasks" | "calendar" | "events" | "trips" | "people" | "cards";
@@ -67,6 +68,10 @@ export type Data = {
   categories: string[];
   /** A trip to highlight (from a notification or the urgent box). */
   focusTrip: number | null;
+  /** Full trip itineraries from travel.jascui.com (empty until loaded, or if the travel app doesn't share them). */
+  itineraries: TripItinerary[];
+  /** The day picked on a calendar, "YYYY-MM-DD" — what the Day view shows. */
+  selectedDay: string;
 };
 
 /** Everything a view can do. Edits open the same sheets wherever they start. */
@@ -85,6 +90,8 @@ export type Actions = {
   newContact: () => void;
   logContact: (c: Contact) => void;
   goTab: (tab: Tab, focus?: { trip?: number }) => void;
+  /** Pick a day ("YYYY-MM-DD") for every calendar and the Day view. */
+  selectDay: (date: string) => void;
 };
 
 export function Stat({ label, value, tone, active, onClick }: { label: string; value: number | string; tone?: string; active?: boolean; onClick?: () => void }) {

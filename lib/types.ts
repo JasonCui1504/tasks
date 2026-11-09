@@ -222,3 +222,55 @@ export function contactDueOn(c: Contact): string | null {
   d.setUTCDate(d.getUTCDate() + c.everyDays);
   return d.toISOString().slice(0, 10);
 }
+
+// ---- trip itineraries (read-only, from travel.jascui.com's /api/feed/itinerary) ----
+
+export type ItineraryFlight = {
+  flight_no: string;
+  from_code: string;
+  to_code: string;
+  from_city: string;
+  to_city: string;
+  /** "YYYY-MM-DDTHH:MM", local to each airport. */
+  depart: string;
+  arrive: string;
+};
+
+export type ItineraryEvent = {
+  date: string;
+  /** Whole hours on the trip's own clock, 0–24. */
+  start_hour: number;
+  end_hour: number;
+  title: string;
+  status: "none" | "unnecessary" | "not_booked" | "booked" | "transit" | string;
+  location: string;
+  notes: string;
+  map_link: string;
+  reservation_link: string;
+  flights: ItineraryFlight[];
+};
+
+export type ItineraryDay = {
+  date: string;
+  accommodation: string;
+  accommodation_status: string;
+  stay_address: string;
+  stay_link: string;
+  breakfast: string;
+  lunch: string;
+  dinner: string;
+  car: string;
+  notes: string;
+};
+
+export type TripItinerary = {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  /** IANA zone the event hours are in ("" if the trip has none). */
+  time_zone: string;
+  url: string;
+  events: ItineraryEvent[];
+  days: ItineraryDay[];
+};
