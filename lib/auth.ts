@@ -1,4 +1,4 @@
-import { createHmac, scryptSync, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { getDb } from "./db";
 
@@ -99,4 +99,36 @@ export async function currentUser(): Promise<string | null> {
 
 export function unauthorized(): Response {
   return Response.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+// ---- first-run setup ----
+// Until any login exists, /login offers "Create your account", guarded by a
+// setup code (the CRON_SECRET value) so only the owner can claim it.
+
+export async function hasAnyUser(): Promise<boolean> {
+  if (Object.keys(envUsers()).length) return true;
+  const db = await getDb();
+  const rs = await db.execute("SELECT 1 FROM task_users LIMIT 1");
+  return rs.rows.length > 0;
+}
+
+export function setupCodeMatches(code: string): boolean {
+  const expected = process.env.CRON_SECRET;
+  if (!expected || !code) return false;
+  const a = createHash("sha256").update(code.trim()).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+export async function createFirstUser(username: string, password: string): Promise<boolean> {
+  if (await hasAnyUser()) return false;
+  const salt = randomBytes(16).toString("hex");
+  const hash = `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+  const db = await getDb();
+  // INSERT only when the table is still empty, so two racing requests can't both win.
+  const rs = await db.execute({
+    sql: "INSERT INTO task_users (username, hash) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM task_users)",
+    args: [username, hash],
+  });
+  return rs.rowsAffected === 1;
 }

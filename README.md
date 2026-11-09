@@ -22,7 +22,7 @@ Everything outstanding in one place — deadlines, bills, subscriptions and trip
    - `CRON_SECRET` — another random string
    - `TRAVEL_FEED_SECRET` — copy the value of `TRAVEL_FEED_SECRET` from the travel_budget Vercel project
 3. **Domain** — Project → Settings → Domains → add `tasks.jascui.com`, and add the `CNAME tasks → cname.vercel-dns.com` record at your DNS provider.
-4. **Login** — put the production database values in a local `.env.prod` and run `node scripts/set-password.mjs <username> --env .env.prod`.
+4. **Login** — open tasks.jascui.com: the first visit shows **Create your account**. Enter your `CRON_SECRET` value as the setup code, then a username and password. The form disappears once an account exists. (To reset a password later: `node scripts/set-password.mjs <username> --env .env.prod` with the production database values.)
 5. **Reminder schedule** — in this GitHub repo: Settings → Secrets and variables → Actions → add secret `CRON_SECRET` (same value as in Vercel). The “Send reminders” workflow then runs every ~10 minutes; you can run it by hand from the Actions tab.
 6. **iPhone** — open tasks.jascui.com in Safari → Share → **Add to Home Screen**. Open it from the Home Screen, tap the bell → **Turn on**, allow notifications, then **Send a test notification**.
 
