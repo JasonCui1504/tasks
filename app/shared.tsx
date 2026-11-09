@@ -9,6 +9,7 @@ import {
   URGENCIES,
   categoryInfo,
   type CalendarEvent,
+  type CalendarEventInput,
   type Contact,
   type GiftCard,
   type Task,
@@ -68,8 +69,10 @@ export type Data = {
   categories: string[];
   /** A trip to highlight (from a notification or the urgent box). */
   focusTrip: number | null;
-  /** Trip itineraries read from each trip's calendar link on travel.jascui.com (empty until loaded / linked). */
+  /** Trip itineraries read from travel.jascui.com through the owner's sign-in there (empty until loaded / connected). */
   itineraries: TripItinerary[];
+  /** Whether the tasks app is signed in to travel.jascui.com to read itineraries. */
+  travelLink: { connected: boolean; username: string; error?: string };
   /** The day picked on a calendar, "YYYY-MM-DD" — what the Day view shows. */
   selectedDay: string;
 };
@@ -82,8 +85,12 @@ export type Actions = {
   /** Add a task straight away (quick-add boxes). */
   addTask: (input: TaskInput) => Promise<void>;
   openEvent: (e: CalendarEvent) => void;
-  /** New event, optionally on a given "YYYY-MM-DD". */
-  newEvent: (date?: string) => void;
+  /** New event, optionally on a given "YYYY-MM-DD", optionally with "HH:MM" start/end. */
+  newEvent: (date?: string, times?: { start: string; end?: string; title?: string }) => void;
+  /** Save changes to a task or event straight away (e.g. dragged to a new time). */
+  updateTask: (t: Task, input: TaskInput) => Promise<void>;
+  updateEvent: (e: CalendarEvent, input: CalendarEventInput) => Promise<void>;
+  createEvent: (input: CalendarEventInput) => Promise<void>;
   openCard: (c: GiftCard, spend?: boolean) => void;
   newCard: () => void;
   openContact: (c: Contact) => void;
@@ -92,9 +99,9 @@ export type Actions = {
   goTab: (tab: Tab, focus?: { trip?: number }) => void;
   /** Pick a day ("YYYY-MM-DD") for every calendar and the Day view. */
   selectDay: (date: string) => void;
-  /** Save a trip's calendar link from travel.jascui.com (throws a readable Error if it doesn't work). */
-  linkTripCalendar: (url: string) => Promise<void>;
-  unlinkTripCalendar: (tripId: number) => void;
+  /** Sign in to travel.jascui.com once so trip days show itineraries (throws a readable Error). */
+  connectTravel: (username: string, password: string) => Promise<void>;
+  disconnectTravel: () => void;
 };
 
 export function Stat({ label, value, tone, active, onClick }: { label: string; value: number | string; tone?: string; active?: boolean; onClick?: () => void }) {

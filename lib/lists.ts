@@ -143,6 +143,7 @@ function rowToEvent(r: Row): CalendarEvent {
     id: Number(r.id),
     title: String(r.title),
     startsAt: String(r.starts_at),
+    endsAt: str(r.ends_at),
     allDay: Boolean(Number(r.all_day)),
     location: String(r.location ?? ""),
     notes: String(r.notes ?? ""),
@@ -165,6 +166,11 @@ export function cleanEventInput(body: Record<string, unknown>, partial: boolean)
     if (Number.isNaN(t)) throw "An event needs a date.";
     out.startsAt = new Date(t).toISOString();
   }
+  if ("endsAt" in body) {
+    const t = body.endsAt == null || body.endsAt === "" ? NaN : Date.parse(String(body.endsAt));
+    out.endsAt = Number.isNaN(t) ? null : new Date(t).toISOString();
+    if (out.endsAt && out.startsAt && out.endsAt <= out.startsAt) throw "An event has to end after it starts.";
+  }
   if ("allDay" in body) out.allDay = Boolean(body.allDay);
   if ("location" in body) out.location = String(body.location ?? "").trim().slice(0, 300);
   if ("notes" in body) out.notes = String(body.notes ?? "").slice(0, 5000);
@@ -180,6 +186,7 @@ export function cleanEventInput(body: Record<string, unknown>, partial: boolean)
 const EVENT_COLUMNS: Record<keyof CalendarEventInput, string> = {
   title: "title",
   startsAt: "starts_at",
+  endsAt: "ends_at",
   allDay: "all_day",
   location: "location",
   notes: "notes",

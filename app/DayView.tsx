@@ -1,17 +1,21 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { daysBetween, formatDateKey, localDateKey, money, zonedParts } from "@/lib/time";
 import { categoryInfo, contactDueOn, type ItineraryItem, type Trip } from "@/lib/types";
 import type { Actions, Data } from "./shared";
-import { TripLink } from "./TripLink";
+import { TravelConnect } from "./TravelConnect";
 
-// One day, hour by hour: your timed tasks and events, plus — on trip days —
-// the actual itinerary from travel.jascui.com (each planned event with its
-// place and booking status, flights, stays, cars and cancellation deadlines),
-// read from the trip's calendar link. The day shown is the one picked on any
-// calendar (data.selectedDay).
+// One day, midnight to midnight: your timed tasks and events, plus — on trip
+// days — the actual itinerary from travel.jascui.com (each planned event with
+// its place and booking status, flights, stays, cars and cancellation
+// deadlines). Drag on empty space to pick a time in 30-minute steps and type a
+// task or event right there; drag a task or event to move it. The day shown is
+// the one picked on any calendar (data.selectedDay).
 
 const HOUR_PX = 48;
+const SLOT = 0.5; // hours
+const SLOT_PX = HOUR_PX * SLOT;
 const EVENT_COLOR = "#7fb894";
 const TRIP_COLOR = "#0f9d8a";
 
@@ -25,9 +29,20 @@ type Block = {
   detail?: React.ReactNode;
   onOpen?: () => void;
   href?: string;
+  /** Saves a new start (hours) when the block is dragged; absent = can't be moved. */
+  moveTo?: (start: number) => void;
   lane?: number;
   lanes?: number;
 };
+
+/** "HH:MM" for hours from midnight. */
+const hhmm = (h: number) => `${String(Math.floor(h) % 24).padStart(2, "0")}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
+
+/** The instant at hours-from-midnight on a "YYYY-MM-DD", in this device's zone. */
+function at(date: string, h: number): string {
+  const base = new Date(`${date}T00:00`);
+  return new Date(base.getTime() + h * 3_600_000).toISOString();
+}
 
 const STATUS_TONE: Record<string, string> = { Booked: "ok", "Not booked": "warn" };
 
@@ -127,8 +142,85 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     const p = zonedParts(new Date(iso), tz);
     return p.h + p.mi / 60;
   };
+  const lanesRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
-  // ---- all-day things ----
+  // Picking a time: while dragging (`pick`), then the composer for the picked range.
+  const [pick, setPick] = useState<{ anchor: number; current: number } | null>(null);
+  const [compose, setCompose] = useState<{ start: number; end: number } | null>(null);
+  // Moving a block: its key and preview start.
+  const [moving, setMoving] = useState<{ key: string; startY: number; orig: number; dur: number; preview: number; moveTo: (s: number) => void; onOpen?: () => void } | null>(null);
+
+  // Open on the morning (or the current hour) rather than midnight.
+  useEffect(() => {
+    const tl = timelineRef.current;
+    const scroller = tl?.closest(".box-body") as HTMLElement | null;
+    if (!tl || !scroller) return;
+    const focusHour = rel === 0 ? Math.max(0, hourOf(new Date().toISOString()) - 1.5) : 7;
+    scroller.scrollTop += tl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + focusHour * HOUR_PX - 8;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the day changes
+  }, [date]);
+
+  const slotAt = (clientY: number) => {
+    const top = lanesRef.current!.getBoundingClientRect().top;
+    return Math.max(0, Math.min(47, Math.floor((clientY - top) / SLOT_PX)));
+  };
+
+  // Mouse/pen: press on empty space and drag to cover a range. Touch: tap a slot (dragging scrolls).
+  function startPick(e: React.PointerEvent) {
+    if (e.target !== lanesRef.current) return;
+    const slot = slotAt(e.clientY);
+    setCompose(null);
+    if (e.pointerType === "touch") {
+      setCompose({ start: slot * SLOT, end: slot * SLOT + 1 });
+      return;
+    }
+    e.preventDefault();
+    setPick({ anchor: slot, current: slot });
+  }
+
+  useEffect(() => {
+    if (!pick) return;
+    const onMove = (e: PointerEvent) => {
+      const current = slotAt(e.clientY);
+      if (current !== pick.current) setPick({ ...pick, current });
+    };
+    const onUp = () => {
+      const a = Math.min(pick.anchor, pick.current);
+      const b = Math.max(pick.anchor, pick.current);
+      // A single click picks an hour; a drag picks exactly what was covered.
+      setCompose({ start: a * SLOT, end: a === b ? a * SLOT + 1 : (b + 1) * SLOT });
+      setPick(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [pick]);
+
+  useEffect(() => {
+    if (!moving) return;
+    const onMove = (e: PointerEvent) => {
+      const delta = Math.round((e.clientY - moving.startY) / SLOT_PX) * SLOT;
+      const preview = Math.max(0, Math.min(24 - moving.dur, moving.orig + delta));
+      if (preview !== moving.preview) setMoving({ ...moving, preview });
+    };
+    const onUp = () => {
+      if (moving.preview !== moving.orig) moving.moveTo(moving.preview);
+      else moving.onOpen?.();
+      setMoving(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [moving]);
+
+  // ---- what's on the day ----
   const allDay: { key: string; title: string; color: string; onOpen: () => void }[] = [];
   const timed: Block[] = [];
   for (const t of data.tasks) {
@@ -137,7 +229,16 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     if (t.allDay) allDay.push({ key: `t${t.id}`, title: t.title, color: info.color, onOpen: () => actions.openTask(t) });
     else {
       const h = hourOf(t.dueAt);
-      timed.push({ key: `t${t.id}`, start: h, end: h + 0.5, title: t.title, color: info.color, sub: `${clock(h)} · ${info.label}${t.amount != null ? ` · ${money(t.amount)}` : ""}`, onOpen: () => actions.openTask(t) });
+      timed.push({
+        key: `t${t.id}`,
+        start: h,
+        end: h + SLOT,
+        title: t.title,
+        color: info.color,
+        sub: `${clock(h)} · ${info.label}${t.amount != null ? ` · ${money(t.amount)}` : ""}`,
+        onOpen: () => actions.openTask(t),
+        moveTo: (s) => actions.updateTask(t, { dueAt: at(date, s), allDay: false }),
+      });
     }
   }
   for (const e of data.events) {
@@ -145,7 +246,17 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     if (e.allDay) allDay.push({ key: `e${e.id}`, title: e.title, color: EVENT_COLOR, onOpen: () => actions.openEvent(e) });
     else {
       const h = hourOf(e.startsAt);
-      timed.push({ key: `e${e.id}`, start: h, end: h + 1, title: e.title, color: EVENT_COLOR, sub: `${clock(h)}${e.location ? ` · ${e.location}` : ""}`, onOpen: () => actions.openEvent(e) });
+      const dur = e.endsAt ? Math.max(SLOT, (Date.parse(e.endsAt) - Date.parse(e.startsAt)) / 3_600_000) : 1;
+      timed.push({
+        key: `e${e.id}`,
+        start: h,
+        end: Math.min(24, h + dur),
+        title: e.title,
+        color: EVENT_COLOR,
+        sub: `${clock(h)}${e.endsAt ? `–${clock(h + dur)}` : ""}${e.location ? ` · ${e.location}` : ""}`,
+        onOpen: () => actions.openEvent(e),
+        moveTo: (s) => actions.updateEvent(e, { startsAt: at(date, s), endsAt: e.endsAt ? at(date, s + dur) : null }),
+      });
     }
   }
   for (const c of data.cards) {
@@ -155,11 +266,11 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     if (contactDueOn(c) === date) allDay.push({ key: `p${c.id}`, title: `Reach out to ${c.name}`, color: "#d0558b", onOpen: () => actions.openContact(c) });
   }
 
-  // ---- trip days: trips covering this day, plus any linked itinerary with items on it (e.g. a flight the night before) ----
+  // ---- trip days: trips covering this day, plus any itinerary with items on it (e.g. a flight the night before) ----
   const tripIds = new Set<number>(data.trips.filter((t) => t.startDate <= date && date <= t.endDate).map((t) => t.id));
   for (const it of data.itineraries) if (it.items.some((i) => i.date === date)) tripIds.add(it.id);
   const tripDays = [...tripIds].map((id) => {
-    const trip: Trip = data.trips.find((t) => t.id === id) ?? { id, name: "Trip", startDate: date, endDate: date, url: data.itineraries.find((i) => i.id === id)!.url.split("/api/")[0] + `/trips/${id}` };
+    const trip: Trip = data.trips.find((t) => t.id === id) ?? { id, name: "Trip", startDate: date, endDate: date, url: data.itineraries.find((i) => i.id === id)!.url };
     const itin = data.itineraries.find((i) => i.id === id);
     const items = itin?.items.filter((i) => i.date === date) ?? [];
     return { trip, itin, items };
@@ -173,10 +284,9 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
   }
 
   const blocks = layLanes(timed);
-  const first = Math.min(7, ...blocks.map((b) => Math.floor(b.start)));
-  const last = Math.max(22, ...blocks.map((b) => Math.ceil(b.end)));
-  const hours = Array.from({ length: Math.min(24, last) - first }, (_, i) => first + i);
+  const hours = Array.from({ length: 24 }, (_, i) => i);
   const nowHour = rel === 0 ? hourOf(data.now.toISOString()) : null;
+  const picked = pick ? { start: Math.min(pick.anchor, pick.current) * SLOT, end: (Math.max(pick.anchor, pick.current) + 1) * SLOT } : compose;
 
   return (
     <div className="dayview">
@@ -220,8 +330,8 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
                 ))}
               </dl>
             )}
-            {itin && !itin.error && items.length === 0 && <p className="muted small">Nothing planned on the itinerary this day.</p>}
-            {(!itin || itin.error) && <TripLink trip={trip} data={data} actions={actions} />}
+            {itin && items.length === 0 && <p className="muted small">Nothing planned on the itinerary this day.</p>}
+            {(!data.travelLink.connected || data.travelLink.error) && <TravelConnect data={data} actions={actions} compact />}
           </div>
         );
       })}
@@ -239,20 +349,30 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
       )}
 
       {tripClockNote && <p className="muted small">{tripClockNote}</p>}
+      <p className="muted small hint">Drag on the timeline to add a task or event; drag one to move it.</p>
 
-      <div className="timeline" style={{ height: hours.length * HOUR_PX }}>
+      <div ref={timelineRef} className="timeline" style={{ height: 24 * HOUR_PX }}>
         {hours.map((h) => (
-          <div key={h} className="hour" style={{ top: (h - first) * HOUR_PX }}>
+          <div key={h} className="hour" style={{ top: h * HOUR_PX }}>
             <span>{clock(h)}</span>
           </div>
         ))}
-        {nowHour != null && nowHour >= first && nowHour <= first + hours.length && (
-          <div className="now-line" style={{ top: (nowHour - first) * HOUR_PX }} />
-        )}
-        <div className="timeline-lanes">
+        {hours.map((h) => (
+          <div key={`h${h}`} className="half-hour" style={{ top: (h + SLOT) * HOUR_PX }} />
+        ))}
+        {nowHour != null && <div className="now-line" style={{ top: nowHour * HOUR_PX }} />}
+        <div ref={lanesRef} className={`timeline-lanes ${pick ? "picking" : ""}`} onPointerDown={startPick}>
+          {picked && (
+            <div className="pick" style={{ top: picked.start * HOUR_PX, height: (picked.end - picked.start) * HOUR_PX }}>
+              <span>
+                {clock(picked.start)} – {clock(picked.end)}
+              </span>
+            </div>
+          )}
           {blocks.map((b) => {
+            const start = moving?.key === b.key ? moving.preview : b.start;
             const style = {
-              top: (b.start - first) * HOUR_PX + 1,
+              top: start * HOUR_PX + 1,
               height: Math.max(22, (b.end - b.start) * HOUR_PX - 2),
               left: `${((b.lane ?? 0) / (b.lanes ?? 1)) * 100}%`,
               width: `calc(${100 / (b.lanes ?? 1)}% - 4px)`,
@@ -261,29 +381,95 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
             const inner = (
               <>
                 <span className="block-title">{b.title}</span>
-                {b.sub && <span className="block-sub">{b.sub}</span>}
+                {moving?.key === b.key ? <span className="block-sub">{clock(start)}</span> : b.sub && <span className="block-sub">{b.sub}</span>}
                 {b.detail}
               </>
             );
-            return b.href ? (
-              // A div, not a link: the block holds its own links (map, reservation).
-              <div key={b.key} className="block trip" style={style} role="link" tabIndex={0} onClick={() => window.open(b.href, "_blank", "noopener")} onKeyDown={(e) => e.key === "Enter" && window.open(b.href, "_blank", "noopener")}>
-                <span className="block-sub">{clock(b.start)}–{clock(b.end)}</span>
-                {inner}
-              </div>
-            ) : (
-              <button key={b.key} className="block" style={style} onClick={b.onOpen}>
+            if (b.href) {
+              return (
+                // A div, not a link: the block holds its own links (map, reservation).
+                <div key={b.key} className="block trip" style={style} role="link" tabIndex={0} onClick={() => window.open(b.href, "_blank", "noopener")} onKeyDown={(e) => e.key === "Enter" && window.open(b.href, "_blank", "noopener")}>
+                  <span className="block-sub">{clock(b.start)}–{clock(b.end)}</span>
+                  {inner}
+                </div>
+              );
+            }
+            return (
+              <button
+                key={b.key}
+                className={`block ${moving?.key === b.key ? "moving" : ""}`}
+                style={style}
+                onPointerDown={(e) => {
+                  if (!b.moveTo || e.pointerType === "touch" || e.button !== 0) return;
+                  e.preventDefault();
+                  setMoving({ key: b.key, startY: e.clientY, orig: b.start, dur: b.end - b.start, preview: b.start, moveTo: b.moveTo, onOpen: b.onOpen });
+                }}
+                onClick={(e) => {
+                  // Mouse clicks open through the drag handler (no movement = open); touch taps open here.
+                  if ((e.nativeEvent as PointerEvent).pointerType === "touch" || e.detail === 0) b.onOpen?.();
+                }}
+              >
                 {inner}
               </button>
             );
           })}
+          {compose && <Composer date={date} range={compose} actions={actions} onClose={() => setCompose(null)} />}
         </div>
       </div>
 
       <div className="agenda-actions">
-        <button className="btn small-btn" onClick={() => actions.newTask({ dueAt: new Date(`${date}T09:00`).toISOString() })}>+ Task this day</button>
+        <button className="btn small-btn" onClick={() => actions.newTask({ dueAt: at(date, 9) })}>+ Task this day</button>
         <button className="btn small-btn" onClick={() => actions.newEvent(date)}>+ Event this day</button>
       </div>
     </div>
+  );
+}
+
+/** Type a task or event into the picked time range. */
+function Composer({ date, range, actions, onClose }: { date: string; range: { start: number; end: number }; actions: Actions; onClose: () => void }) {
+  const [kind, setKind] = useState<"event" | "task">("event");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    if (kind === "event") await actions.createEvent({ title: title.trim(), startsAt: at(date, range.start), endsAt: at(date, range.end), allDay: false });
+    else await actions.addTask({ title: title.trim(), dueAt: at(date, range.start), allDay: false });
+    onClose();
+  }
+
+  function more() {
+    if (kind === "event") actions.newEvent(date, { start: hhmm(range.start), end: hhmm(range.end), title: title.trim() });
+    else actions.newTask({ title: title.trim(), dueAt: at(date, range.start), allDay: false });
+    onClose();
+  }
+
+  return (
+    <form
+      className="composer"
+      style={{ top: Math.min(range.end * HOUR_PX + 4, 24 * HOUR_PX - 120) }}
+      onSubmit={save}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+    >
+      <div className="composer-head">
+        <div className="seg" role="radiogroup" aria-label="Add as">
+          <button type="button" className={kind === "event" ? "on" : ""} onClick={() => setKind("event")}>Event</button>
+          <button type="button" className={kind === "task" ? "on" : ""} onClick={() => setKind("task")}>Task</button>
+        </div>
+        <span className="muted small">
+          {clock(range.start)}
+          {kind === "event" ? ` – ${clock(range.end)}` : ""}
+        </span>
+      </div>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === "event" ? "What's happening?" : "What needs doing?"} autoFocus aria-label="Title" />
+      <div className="composer-actions">
+        <button type="button" className="link small" onClick={onClose}>Cancel</button>
+        <button type="button" className="link small" onClick={more}>More options</button>
+        <button className="btn primary small-btn" disabled={!title.trim() || busy}>Add</button>
+      </div>
+    </form>
   );
 }

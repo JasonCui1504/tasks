@@ -161,6 +161,8 @@ export type CalendarEvent = {
   title: string;
   /** UTC ISO instant. All-day events are stored at 9:00 local on that date. */
   startsAt: string;
+  /** UTC ISO instant it ends, or null (shown as an hour long). */
+  endsAt: string | null;
   allDay: boolean;
   location: string;
   notes: string;
@@ -172,7 +174,7 @@ export type CalendarEvent = {
   remindersFrom: string;
 };
 
-export type CalendarEventInput = Partial<Pick<CalendarEvent, "title" | "startsAt" | "allDay" | "location" | "notes" | "reminders">>;
+export type CalendarEventInput = Partial<Pick<CalendarEvent, "title" | "startsAt" | "endsAt" | "allDay" | "location" | "notes" | "reminders">>;
 
 export const DEFAULT_EVENT_REMINDERS = [1440, 60];
 

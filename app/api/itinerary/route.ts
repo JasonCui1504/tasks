@@ -1,34 +1,33 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { listItineraries, removeCalendarLink, saveCalendarLink } from "@/lib/itinerary";
+import { connectTravel, disconnectTravel, listItineraries } from "@/lib/itinerary";
 
 export const dynamic = "force-dynamic";
 
-// Trip itineraries for the Day view, read from each trip's calendar link on
-// travel.jascui.com. Fetched after the page loads, so a slow travel app never delays it.
+// Trip itineraries for the Day view, read from travel.jascui.com through the
+// owner's own sign-in there. Fetched after the page loads, so a slow travel app never delays it.
 export async function GET() {
   const user = await currentUser();
   if (!user) return unauthorized();
-  return Response.json({ itineraries: await listItineraries(user) });
+  return Response.json(await listItineraries(user));
 }
 
-// PUT { url } saves a trip's calendar link (the trip comes from the link itself).
-export async function PUT(request: Request) {
+// POST { username, password } connects (signs in to travel.jascui.com once).
+export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) return unauthorized();
   const body = await request.json().catch(() => ({}));
   try {
-    return Response.json({ itinerary: await saveCalendarLink(user, String(body.url ?? "")) });
+    await connectTravel(user, String(body.username ?? ""), String(body.password ?? ""));
   } catch (err) {
-    if (typeof err === "string") return Response.json({ error: err }, { status: 400 });
-    return Response.json({ error: "Couldn't reach the travel app. Try again in a moment." }, { status: 502 });
+    return Response.json({ error: typeof err === "string" ? err : "Couldn't connect." }, { status: 400 });
   }
+  return Response.json(await listItineraries(user));
 }
 
-// DELETE ?trip=3 forgets a trip's link.
-export async function DELETE(request: Request) {
+// DELETE forgets the travel sign-in (and the saved password).
+export async function DELETE() {
   const user = await currentUser();
   if (!user) return unauthorized();
-  const trip = Number(new URL(request.url).searchParams.get("trip"));
-  if (trip) await removeCalendarLink(user, trip);
+  await disconnectTravel(user);
   return Response.json({ ok: true });
 }
