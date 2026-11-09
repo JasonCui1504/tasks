@@ -7,8 +7,11 @@ import {
   REPEATS,
   URGENCIES,
   categoryInfo,
+  contactDueOn,
   type CalendarEvent,
   type CalendarEventInput,
+  type Contact,
+  type ContactInput,
   type GiftCard,
   type GiftCardInput,
   type Settings,
@@ -17,6 +20,7 @@ import {
   type Trip,
 } from "@/lib/types";
 import { api } from "./api-client";
+import { ContactSheet, ContactsView, daysUntilDue } from "./Contacts";
 import { EventSheet, EventsView } from "./Events";
 import { GiftCardSheet, GiftCardsView } from "./GiftCards";
 import TaskSheet from "./TaskSheet";
@@ -30,14 +34,16 @@ type Props = {
   initialSettings: Settings;
   initialCards: GiftCard[];
   initialEvents: CalendarEvent[];
+  initialContacts: Contact[];
   vapidKey: string | null;
   travel: { configured: boolean; url: string };
 };
 
-export type Tab = "tasks" | "cards" | "events";
+export type Tab = "tasks" | "events" | "people" | "cards";
 const TABS: { id: Tab; label: string; title: string }[] = [
   { id: "tasks", label: "Tasks", title: "Tasks" },
   { id: "events", label: "Events", title: "Events" },
+  { id: "people", label: "Stay in touch", title: "Stay in touch" },
   { id: "cards", label: "Gift cards", title: "Gift cards" },
 ];
 const TAB_KEY = "tasks.tab";
@@ -76,13 +82,15 @@ function byDue(a: Task, b: Task) {
   return b.urgency - a.urgency || a.id - b.id;
 }
 
-export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, vapidKey, travel }: Props) {
+export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, vapidKey, travel }: Props) {
   const [tab, setTabState] = useState<Tab>("tasks");
   const [tasks, setTasks] = useState(initialTasks);
   const [cards, setCards] = useState(initialCards);
   const [events, setEvents] = useState(initialEvents);
   const [cardSheet, setCardSheet] = useState<{ card: GiftCard | null; spend?: boolean } | null>(null);
   const [eventSheet, setEventSheet] = useState<{ event: CalendarEvent | null } | null>(null);
+  const [contacts, setContacts] = useState(initialContacts);
+  const [contactSheet, setContactSheet] = useState<{ contact: Contact | null } | null>(null);
   const [trips, setTrips] = useState(initialTrips);
   const [settings, setSettings] = useState(initialSettings);
   const [now, setNow] = useState(() => new Date());
@@ -101,12 +109,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // Keep relative times fresh, use this device's time zone, and refetch when the app comes back to the foreground.
   const refresh = useCallback(async () => {
     try {
-      const [{ tasks }, { trips }, { cards }, { events }] = await Promise.all([
+      const [{ tasks }, { trips }, { cards }, { events }, { contacts }] = await Promise.all([
         api<{ tasks: Task[] }>("/api/tasks", "GET"),
         api<{ trips: Trip[] }>("/api/trips", "GET"),
         api<{ cards: GiftCard[] }>("/api/gift-cards", "GET"),
         api<{ events: CalendarEvent[] }>("/api/events", "GET"),
+        api<{ contacts: Contact[] }>("/api/contacts", "GET"),
       ]);
+      setContacts(contacts);
       setTasks(tasks);
       setTrips(trips);
       setCards(cards);
@@ -148,9 +158,10 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     const tripId = Number(params.get("trip"));
     const eventId = Number(params.get("event"));
     const cardId = Number(params.get("card"));
+    const personId = Number(params.get("person"));
     const wanted = params.get("tab") as Tab | null;
     let next: Tab | null = TABS.some((t) => t.id === wanted) ? wanted : null;
-    if (!next && !taskId && !tripId && !eventId && !cardId) {
+    if (!next && !taskId && !tripId && !eventId && !cardId && !personId) {
       try {
         const saved = localStorage.getItem(TAB_KEY) as Tab | null;
         if (TABS.some((t) => t.id === saved)) next = saved;
@@ -177,9 +188,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       if (c) setCardSheet({ card: c });
       next = "cards";
     }
+    if (personId) {
+      const c = initialContacts.find((x) => x.id === personId);
+      if (c) setContactSheet({ contact: c });
+      next = "people";
+    }
     if (next) setTabState(next);
     if (window.location.search) window.history.replaceState(null, "", "/");
-  }, [initialTasks, initialEvents, initialCards]);
+  }, [initialTasks, initialEvents, initialCards, initialContacts]);
 
   useEffect(() => {
     if (!toast) return;
@@ -265,6 +281,10 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     () => trips.filter((t) => (focusTrip == null || t.id === focusTrip) && daysBetween(localDateKey(now, tz), t.endDate) >= 0).slice(0, 6),
     [trips, focusTrip, now, tz],
   );
+  const contactsDue = contacts.filter((c) => {
+    const d = daysUntilDue(c, localDateKey(now, tz));
+    return d == null || d <= 0;
+  }).length;
   const activeCards = cards.filter((c) => c.status === "active").length;
   const upcomingEventCount = useMemo(() => {
     const todayKey = localDateKey(now, tz);
@@ -400,7 +420,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       text: `Deleted the ${card.store} card`,
       undo: async () => {
         const { card: back } = await api<{ card: GiftCard }>("/api/gift-cards", "POST", {
-          store: card.store, balance: card.balance, initialAmount: card.initialAmount, expiresOn: card.expiresOn, code: card.code, notes: card.notes,
+          store: card.store, balance: card.balance, initialAmount: card.initialAmount, expiresOn: card.expiresOn, location: card.location, notes: card.notes,
         });
         replaceCard(back);
         setToast(null);
@@ -442,6 +462,49 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     });
   }
 
+  // ---- stay in touch ----
+
+  function replaceContact(contact: Contact) {
+    setContacts((list) =>
+      list.some((c) => c.id === contact.id) ? list.map((c) => (c.id === contact.id ? contact : c)) : [...list, contact],
+    );
+  }
+
+  async function saveContact(input: ContactInput, existing: Contact | null) {
+    const { contact } = existing
+      ? await api<{ contact: Contact }>(`/api/contacts/${existing.id}`, "PATCH", input)
+      : await api<{ contact: Contact }>("/api/contacts", "POST", input);
+    replaceContact(contact);
+    setContactSheet(null);
+  }
+
+  async function logContactToday(contact: Contact) {
+    try {
+      const { contact: next, logId } = await api<{ contact: Contact; logId: number }>(`/api/contacts/${contact.id}`, "PATCH", {
+        action: "log",
+        on: localDateKey(new Date(), tz),
+      });
+      replaceContact(next);
+      setToast({
+        text: `Logged ${contact.name} — next nudge ${formatDateKey(contactDueOn(next)!)}`,
+        undo: async () => {
+          const { contact: back } = await api<{ contact: Contact }>(`/api/contacts/${contact.id}`, "PATCH", { action: "unlog", logId });
+          replaceContact(back);
+          setToast(null);
+        },
+      });
+    } catch (err) {
+      setToast({ text: (err as Error).message });
+    }
+  }
+
+  async function removeContact(contact: Contact) {
+    await api(`/api/contacts/${contact.id}`, "DELETE");
+    setContacts((list) => list.filter((c) => c.id !== contact.id));
+    setContactSheet(null);
+    setToast({ text: `Removed ${contact.name}` });
+  }
+
   function newTask(draft: TaskInput = {}) {
     setEditing({
       task: null,
@@ -467,7 +530,15 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           </button>
           <button
             className="btn primary"
-            onClick={() => (tab === "cards" ? setCardSheet({ card: null }) : tab === "events" ? setEventSheet({ event: null }) : newTask())}
+            onClick={() =>
+              tab === "cards"
+                ? setCardSheet({ card: null })
+                : tab === "events"
+                  ? setEventSheet({ event: null })
+                  : tab === "people"
+                    ? setContactSheet({ contact: null })
+                    : newTask()
+            }
           >
             <span aria-hidden>+</span> New
           </button>
@@ -481,7 +552,9 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
               ? counts.overdue + counts.today
               : t.id === "events"
                 ? upcomingEventCount
-                : activeCards;
+                : t.id === "people"
+                  ? contactsDue
+                  : activeCards;
           return (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
               {t.label}
@@ -490,6 +563,17 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           );
         })}
       </nav>
+
+      {tab === "people" && (
+        <ContactsView
+          contacts={contacts}
+          now={now}
+          tz={tz}
+          onOpen={(contact) => setContactSheet({ contact })}
+          onLog={logContactToday}
+          onNew={() => setContactSheet({ contact: null })}
+        />
+      )}
 
       {tab === "cards" && (
         <GiftCardsView cards={cards} now={now} tz={tz} onOpen={(card, spend) => setCardSheet({ card, spend })} onNew={() => setCardSheet({ card: null })} />
@@ -646,6 +730,16 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           onSpend={spendCard}
           onStatus={cardStatus}
           onDelete={removeCard}
+        />
+      )}
+
+      {contactSheet && (
+        <ContactSheet
+          contact={contactSheet.contact}
+          onClose={() => setContactSheet(null)}
+          onSave={saveContact}
+          onDelete={removeContact}
+          onChanged={replaceContact}
         />
       )}
 

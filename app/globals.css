@@ -909,9 +909,6 @@ a {
   font-size: 13px;
   color: #7fb894;
 }
-.card.spend .inline input {
-  flex: 1;
-}
 .card.spend > .link {
   justify-self: start;
 }
@@ -1004,7 +1001,56 @@ a {
   }
 }
 
-.inline input.grow {
-  flex: 1;
-  width: auto;
+.inline input.grow,
+.card.spend .inline input {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+}
+.row2 > *,
+.sheet-body > * {
+  min-width: 0;
+}
+
+/* ---------- stay in touch ---------- */
+
+.person-row {
+  align-items: center;
+}
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-dim);
+  color: var(--text);
+  font-weight: 600;
+}
+.btn.small-btn {
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.contact-history li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--surface);
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .tabs {
+    gap: 18px;
+  }
+  .tabs button {
+    font-size: 14px;
+  }
 }

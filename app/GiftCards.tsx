@@ -85,7 +85,7 @@ export function GiftCardsView({ cards, now, tz, onOpen, onNew }: ViewProps) {
                         {c.status === "used" ? "Used up" : expiryText(days, c.expiresOn)}
                       </span>
                       {spent > 0 && c.initialAmount != null && <span>Spent {money(spent)} of {money(c.initialAmount)}</span>}
-                      {c.code && <span>•••• {c.code.replace(/\s/g, "").slice(-4)}</span>}
+                      {c.location && <span>⌖ {c.location}</span>}
                     </span>
                   </button>
                   <div className="card-side">
@@ -120,7 +120,7 @@ export function GiftCardSheet({ card, focusSpend, onClose, onSave, onSpend, onSt
   const [balance, setBalance] = useState(card ? String(card.balance) : "");
   const [initial, setInitial] = useState(card?.initialAmount != null ? String(card.initialAmount) : "");
   const [expiresOn, setExpiresOn] = useState(card?.expiresOn ?? "");
-  const [code, setCode] = useState(card?.code ?? "");
+  const [location, setLocation] = useState(card?.location ?? "");
   const [notes, setNotes] = useState(card?.notes ?? "");
   const [spend, setSpend] = useState("");
   const [error, setError] = useState("");
@@ -149,7 +149,7 @@ export function GiftCardSheet({ card, focusSpend, onClose, onSave, onSpend, onSt
           // A new card's original value defaults to its balance (set server-side).
           ...(initial !== "" || card ? { initialAmount: initial === "" ? null : Number(initial) } : {}),
           expiresOn: expiresOn || null,
-          code,
+          location,
           notes,
         },
         card,
@@ -188,7 +188,7 @@ export function GiftCardSheet({ card, focusSpend, onClose, onSave, onSpend, onSt
                       if (Number(spend) > 0) run(() => onSpend(card, Number(spend)));
                     }
                   }}
-                  placeholder="How much did you spend?"
+                  placeholder="Amount spent"
                   autoFocus={focusSpend}
                   aria-label="Amount spent"
                 />
@@ -228,12 +228,19 @@ export function GiftCardSheet({ card, focusSpend, onClose, onSave, onSpend, onSt
             </div>
           )}
 
-          <Field label="Card number / PIN" hint="optional">
-            <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Claim code, card number, PIN…" />
+          <Field label="Where it is" hint="optional">
+            <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Wallet, desk drawer, email from Mom, Amazon account…" />
+            <div className="chips wrap">
+              {["Wallet", "Email", "App / online account", "At home"].map((place) => (
+                <button type="button" key={place} className={`chip ${location === place ? "active" : ""}`} onClick={() => setLocation(location === place ? "" : place)}>
+                  {place}
+                </button>
+              ))}
+            </div>
           </Field>
 
           <Field label="Notes">
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Online only, where it is, who gave it…" />
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Online only, who gave it…" />
           </Field>
 
           {!card && <p className="muted small">You&apos;ll get a heads-up 30, 7 and 1 day before it expires while there&apos;s money on it.</p>}

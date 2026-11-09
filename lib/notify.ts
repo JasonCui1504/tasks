@@ -2,7 +2,7 @@ import { getDb } from "./db";
 import { sendToUser, type PushPayload } from "./push";
 import { getSettings, listTasks } from "./tasks";
 import { getTrips } from "./travel";
-import { listEvents, listGiftCards } from "./lists";
+import { listContacts, listEvents, listGiftCards } from "./lists";
 import {
   daysBetween,
   formatDateKey,
@@ -18,7 +18,10 @@ import {
   REPEATS,
   URGENCIES,
   categoryInfo,
+  contactDueOn,
+  frequencyLabel,
   type CalendarEvent,
+  type Contact,
   type GiftCard,
   type Settings,
   type Task,
@@ -41,6 +44,7 @@ import {
 // - Trips from travel.jascui.com get a heads-up 2 weeks, 3 days and 1 day out.
 // - Events remind at (start − offset), like tasks.
 // - Gift cards with money left get a heads-up 30, 7 and 1 day before they expire.
+// - Stay in touch: a nudge the day someone is due, then once a week until you log it.
 // - A morning summary lists what's due today and overdue, and today's events.
 
 export type Candidate = { key: string; taskId: number | null; payload: PushPayload; critical: boolean };
@@ -246,7 +250,44 @@ export function giftCardCandidates(c: GiftCard, now: Date, s: Settings): Candida
   }));
 }
 
-function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings, events: CalendarEvent[] = []): Candidate | null {
+function agoText(days: number): string {
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
+}
+
+export function contactCandidates(c: Contact, now: Date, s: Settings): Candidate[] {
+  const due = contactDueOn(c);
+  if (!due || !c.lastContactOn) return []; // never logged: shown in the app, but no nagging
+  const today = localDateKey(now, s.timeZone);
+  const late = daysBetween(due, today);
+  if (late < 0) return [];
+  const week = Math.floor(late / 7);
+  return [
+    {
+      key: `k:${c.id}:${due}:${week}`,
+      taskId: null,
+      critical: false,
+      payload: {
+        title: `Time to reach out to ${c.name}`,
+        body: join(`Last time: ${formatDateKey(c.lastContactOn)} (${agoText(daysBetween(c.lastContactOn, today))})`, frequencyLabel(c.everyDays).toLowerCase()),
+        url: `/?person=${c.id}`,
+        tag: `person-${c.id}`,
+      },
+    },
+  ];
+}
+
+function digestCandidate(
+  tasks: Task[],
+  trips: Trip[],
+  now: Date,
+  s: Settings,
+  events: CalendarEvent[] = [],
+  contacts: Contact[] = [],
+): Candidate | null {
   if (s.digestHour == null) return null;
   const p = zonedParts(now, s.timeZone);
   if (p.h < s.digestHour || p.h >= s.digestHour + 3) return null;
@@ -256,7 +297,8 @@ function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings, e
   const dueToday = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) === today);
   const tripToday = trips.filter((t) => t.startDate === today);
   const eventsToday = events.filter((e) => localDateKey(new Date(e.startsAt), s.timeZone) === today);
-  if (!overdue.length && !dueToday.length && !tripToday.length && !eventsToday.length) return null;
+  const reachOut = contacts.filter((c) => c.lastContactOn && contactDueOn(c)! <= today);
+  if (!overdue.length && !dueToday.length && !tripToday.length && !eventsToday.length && !reachOut.length) return null;
   const head = [
     dueToday.length && `${dueToday.length} due today`,
     overdue.length && `${overdue.length} overdue`,
@@ -265,6 +307,11 @@ function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings, e
       (eventsToday.length === 1
         ? `${eventsToday[0].title}${eventsToday[0].allDay ? "" : ` at ${new Date(eventsToday[0].startsAt).toLocaleTimeString("en-US", { timeZone: s.timeZone, hour: "numeric", minute: "2-digit" })}`}`
         : `${eventsToday.length} events`),
+    reachOut.length &&
+      `reach out to ${reachOut
+        .slice(0, 2)
+        .map((c) => c.name)
+        .join(" and ")}${reachOut.length > 2 ? ` +${reachOut.length - 2}` : ""}`,
   ]
     .filter(Boolean)
     .join(", ");
@@ -276,7 +323,7 @@ function digestCandidate(tasks: Task[], trips: Trip[], now: Date, s: Settings, e
     key: `d:${today}`,
     taskId: null,
     critical: false,
-    payload: { title: `Today: ${head}`, body: items.join(", ") || "Have a good day.", url: "/", tag: "digest" },
+    payload: { title: `Today: ${head[0].toUpperCase() + head.slice(1)}`, body: items.join(", ") || "Have a good day.", url: "/", tag: "digest" },
   };
 }
 
@@ -329,7 +376,7 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
     if (renewed.length) tasks = await listTasks(owner);
     const open = tasks.filter((t) => t.status === "open");
 
-    const [events, cards] = await Promise.all([listEvents(owner), listGiftCards(owner)]);
+    const [events, cards, contacts] = await Promise.all([listEvents(owner), listGiftCards(owner), listContacts(owner)]);
 
     const candidates: Candidate[] = [
       ...renewed,
@@ -337,8 +384,9 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
       ...(s.tripAlerts ? tripCandidates(trips, open, now, s) : []),
       ...events.flatMap((e) => eventCandidates(e, now, s)),
       ...cards.flatMap((c) => giftCardCandidates(c, now, s)),
+      ...contacts.flatMap((c) => contactCandidates(c, now, s)),
     ];
-    const digest = digestCandidate(open, trips, now, s, events);
+    const digest = digestCandidate(open, trips, now, s, events, contacts);
     if (digest) candidates.push(digest);
 
     // Overdue + due today, for the Home Screen icon badge.

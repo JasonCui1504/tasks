@@ -11,9 +11,10 @@ Everything outstanding in one place — deadlines, bills, subscriptions and trip
 - **Reminders**: per task (when due, 1 hour, 1 day, 3 days, 1 week before) plus a one-off “remind me at”. Snooze 1 hour / 1 day / 1 week.
 - **Specific notifications**, e.g. “Payment due tomorrow: Rent — $1,800.00/month”, “Netflix renews in 3 days — cancel before then if you don’t want it”, “Needs attention: Expense report — overdue, was due yesterday”, “Tokyo starts in 3 days — 2 prep tasks still open: Book ryokan, Get yen”. Overdue Critical tasks nag every 4 hours, High once a day. Optional morning summary and quiet hours.
 - **Trips from travel.jascui.com**: upcoming trips appear as cards; link prep tasks to a trip; heads-ups 2 weeks, 3 days and 1 day out.
-- **Tabs**: Tasks, Events and Gift cards, switched from the bar under the title. The app reopens on the last tab you used.
+- **Tabs**: Tasks, Events, Stay in touch and Gift cards, switched from the bar under the title. The app reopens on the last tab you used.
 - **Events**: birthdays, appointments, concerts — a date, optional time and place, and reminders (1 week / 3 days / 1 day / 1 hour before, or when it starts). Grouped Today / Tomorrow / Next 7 days / by month, with your trips from travel.jascui.com shown alongside. Today's events are in the morning summary.
-- **Gift cards**: store, balance, original value, expiry, card number/PIN. Tap **Spend** to take a purchase off the balance; a card at $0 moves to “Used up”. Shows the total left to spend, and sends “Starbucks gift card expires in 5 days — $25.00 left to spend” 30, 7 and 1 day before expiry while there's money on it.
+- **Stay in touch**: people you want to keep up with and how often (every week → every year, or a custom number of days). Tap **Reached out** to log today, or open someone to log a catch-up on another date with a note (“called, 40 min”) and see the history. They're sorted into Reach out / Coming up / Later, and you get “Time to reach out to Mom — last time: Oct 28 (12 days ago)” the day someone's due, then weekly until you log it.
+- **Gift cards**: store, balance, original value, expiry, and where the card is (wallet, email, an app…). Tap **Spend** to take a purchase off the balance; a card at $0 moves to “Used up”. Shows the total left to spend, and sends “Starbucks gift card expires in 5 days — $25.00 left to spend” 30, 7 and 1 day before expiry while there's money on it.
 
 ## Setup
 

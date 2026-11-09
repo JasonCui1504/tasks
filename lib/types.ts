@@ -141,15 +141,15 @@ export type GiftCard = {
   initialAmount: number | null;
   /** "YYYY-MM-DD", or null if it doesn't expire. */
   expiresOn: string | null;
-  /** Card number / PIN / claim code, free text. */
-  code: string;
+  /** Where the card is: "Wallet", "Email from Mom", "Amazon account"… */
+  location: string;
   notes: string;
   status: "active" | "used";
   createdAt: string;
   updatedAt: string;
 };
 
-export type GiftCardInput = Partial<Pick<GiftCard, "store" | "balance" | "initialAmount" | "expiresOn" | "code" | "notes">>;
+export type GiftCardInput = Partial<Pick<GiftCard, "store" | "balance" | "initialAmount" | "expiresOn" | "location" | "notes">>;
 
 /** Days before a gift card expires to send a heads-up. */
 export const GIFT_CARD_ALERT_DAYS = [30, 7, 1];
@@ -175,3 +175,50 @@ export type CalendarEvent = {
 export type CalendarEventInput = Partial<Pick<CalendarEvent, "title" | "startsAt" | "allDay" | "location" | "notes" | "reminders">>;
 
 export const DEFAULT_EVENT_REMINDERS = [1440, 60];
+
+// ---- stay in touch ----
+
+export type Contact = {
+  id: number;
+  name: string;
+  /** Reach out about this often. */
+  everyDays: number;
+  /** "YYYY-MM-DD" of the last time you reached out, or null if never logged. */
+  lastContactOn: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContactInput = Partial<Pick<Contact, "name" | "everyDays" | "lastContactOn" | "notes">>;
+
+/** One time you reached out. */
+export type ContactLog = {
+  id: number;
+  contactId: number;
+  /** "YYYY-MM-DD" */
+  on: string;
+  note: string;
+};
+
+export const CONTACT_FREQUENCIES: { days: number; label: string }[] = [
+  { days: 7, label: "Every week" },
+  { days: 14, label: "Every 2 weeks" },
+  { days: 30, label: "Every month" },
+  { days: 60, label: "Every 2 months" },
+  { days: 90, label: "Every 3 months" },
+  { days: 182, label: "Every 6 months" },
+  { days: 365, label: "Every year" },
+];
+
+export function frequencyLabel(days: number): string {
+  return CONTACT_FREQUENCIES.find((f) => f.days === days)?.label ?? `Every ${days} days`;
+}
+
+/** When to reach out next: "YYYY-MM-DD", or null meaning "now" (never logged). */
+export function contactDueOn(c: Contact): string | null {
+  if (!c.lastContactOn) return null;
+  const d = new Date(c.lastContactOn + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + c.everyDays);
+  return d.toISOString().slice(0, 10);
+}
