@@ -85,11 +85,10 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
 
   // Trip itineraries load after the page, so a slow travel app never holds it up.
   const loadItineraries = useCallback(async () => {
-    if (!travel.configured) return;
     try {
       setItineraries((await api<{ itineraries: TripItinerary[] }>("/api/itinerary", "GET")).itineraries);
     } catch {}
-  }, [travel.configured]);
+  }, []);
 
   // Keep relative times fresh, use this device's time zone, and refetch when the app comes back to the foreground.
   const refresh = useCallback(async () => {
@@ -440,6 +439,15 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       newContact: () => setContactSheet({ contact: null }),
       logContact: logContactToday,
       selectDay: setSelectedDay,
+      linkTripCalendar: async (url) => {
+        const { itinerary } = await api<{ itinerary: TripItinerary }>("/api/itinerary", "PUT", { url });
+        setItineraries((list) => [...list.filter((i) => i.id !== itinerary.id), itinerary]);
+        setToast({ text: "Itinerary linked — trip days now show the plan." });
+      },
+      unlinkTripCalendar: (tripId) => {
+        setItineraries((list) => list.filter((i) => i.id !== tripId));
+        api(`/api/itinerary?trip=${tripId}`, "DELETE").catch(() => {});
+      },
       goTab: (next, focus) => {
         setTab(next);
         if (focus?.trip != null) setFocusTrip(focus.trip);

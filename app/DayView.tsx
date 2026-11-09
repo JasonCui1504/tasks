@@ -1,13 +1,15 @@
 "use client";
 
 import { daysBetween, formatDateKey, localDateKey, money, zonedParts } from "@/lib/time";
-import { categoryInfo, contactDueOn, type ItineraryEvent, type TripItinerary } from "@/lib/types";
+import { categoryInfo, contactDueOn, type ItineraryItem, type Trip } from "@/lib/types";
 import type { Actions, Data } from "./shared";
+import { TripLink } from "./TripLink";
 
 // One day, hour by hour: your timed tasks and events, plus — on trip days —
 // the actual itinerary from travel.jascui.com (each planned event with its
-// place, booking status and flights, and where you're staying / eating).
-// The day shown is the one picked on any calendar (data.selectedDay).
+// place and booking status, flights, stays, cars and cancellation deadlines),
+// read from the trip's calendar link. The day shown is the one picked on any
+// calendar (data.selectedDay).
 
 const HOUR_PX = 48;
 const EVENT_COLOR = "#7fb894";
@@ -27,23 +29,39 @@ type Block = {
   lanes?: number;
 };
 
-const STATUS: Record<string, { label: string; tone: string }> = {
-  booked: { label: "Booked", tone: "ok" },
-  not_booked: { label: "Not booked", tone: "warn" },
-  transit: { label: "Transit", tone: "" },
-  unnecessary: { label: "No booking needed", tone: "" },
-};
+const STATUS_TONE: Record<string, string> = { Booked: "ok", "Not booked": "warn" };
+
+/** "Map: https://…" style lines become links; the rest stay as text. */
+function Details({ lines }: { lines: string[] }) {
+  return (
+    <>
+      {lines.slice(0, 4).map((l, i) => {
+        const m = /^(Map|Reservation|Link):\s*(https?:\/\/\S+)$/.exec(l);
+        if (m) {
+          return (
+            <span key={i} className="block-sub">
+              <a href={m[2]} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{m[1]} ↗</a>
+            </span>
+          );
+        }
+        if (/^https?:\/\//.test(l)) {
+          return (
+            <span key={i} className="block-sub">
+              <a href={l} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Link ↗</a>
+            </span>
+          );
+        }
+        return <span key={i} className="block-sub notes">{l.length > 140 ? l.slice(0, 140) + "…" : l}</span>;
+      })}
+    </>
+  );
+}
 
 function clock(h: number) {
   const hh = Math.floor(h) % 24;
   const mm = Math.round((h - Math.floor(h)) * 60);
   return `${((hh + 11) % 12) + 1}${mm ? `:${String(mm).padStart(2, "0")}` : ""} ${hh < 12 ? "AM" : "PM"}`;
 }
-
-const flightTime = (s: string) => {
-  const [h, m] = s.slice(11, 16).split(":").map(Number);
-  return clock(h + m / 60);
-};
 
 function addDays(date: string, n: number) {
   const d = new Date(date + "T12:00:00Z");
@@ -78,30 +96,23 @@ function layLanes(blocks: Block[]): Block[] {
   return out;
 }
 
-function tripEventBlock(e: ItineraryEvent, trip: TripItinerary, i: number): Block {
-  const status = STATUS[e.status];
+function tripBlock(item: ItineraryItem, tripUrl: string, key: string): Block {
   return {
-    key: `ti${trip.id}-${i}`,
-    start: e.start_hour,
-    end: Math.max(e.end_hour, e.start_hour + 0.5),
-    title: e.title,
+    key,
+    start: item.start_hour!,
+    end: Math.max(item.end_hour ?? item.start_hour! + 1, item.start_hour! + 0.5),
+    title: item.title,
     color: TRIP_COLOR,
-    href: trip.url,
+    href: tripUrl,
     detail: (
       <>
-        {(e.location || status) && (
+        {(item.location || item.status) && (
           <span className="block-sub">
-            {status && <span className={`pill ${status.tone}`}>{status.label}</span>}
-            {e.location && <span>⌖ {e.location}</span>}
+            {item.status && <span className={`pill ${STATUS_TONE[item.status] ?? ""}`}>{item.status}</span>}
+            {item.location && <span>⌖ {item.location}</span>}
           </span>
         )}
-        {e.flights.map((f, j) => (
-          <span key={j} className="block-sub flight">
-            ✈ {f.flight_no && <strong>{f.flight_no}</strong>} {f.from_code} {flightTime(f.depart)} → {f.to_code} {flightTime(f.arrive)}
-            {f.arrive.slice(0, 10) !== f.depart.slice(0, 10) ? " (+1)" : ""}
-          </span>
-        ))}
-        {e.notes && <span className="block-sub notes">{e.notes.slice(0, 140)}</span>}
+        <Details lines={item.details} />
       </>
     ),
   };
@@ -144,15 +155,20 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     if (contactDueOn(c) === date) allDay.push({ key: `p${c.id}`, title: `Reach out to ${c.name}`, color: "#d0558b", onOpen: () => actions.openContact(c) });
   }
 
-  // ---- trip days ----
-  const trips = data.trips.filter((t) => t.startDate <= date && date <= t.endDate);
-  const itineraries = trips.map((t) => ({ trip: t, itin: data.itineraries.find((i) => i.id === t.id) }));
+  // ---- trip days: trips covering this day, plus any linked itinerary with items on it (e.g. a flight the night before) ----
+  const tripIds = new Set<number>(data.trips.filter((t) => t.startDate <= date && date <= t.endDate).map((t) => t.id));
+  for (const it of data.itineraries) if (it.items.some((i) => i.date === date)) tripIds.add(it.id);
+  const tripDays = [...tripIds].map((id) => {
+    const trip: Trip = data.trips.find((t) => t.id === id) ?? { id, name: "Trip", startDate: date, endDate: date, url: data.itineraries.find((i) => i.id === id)!.url.split("/api/")[0] + `/trips/${id}` };
+    const itin = data.itineraries.find((i) => i.id === id);
+    const items = itin?.items.filter((i) => i.date === date) ?? [];
+    return { trip, itin, items };
+  });
   let tripClockNote = "";
-  for (const { itin } of itineraries) {
-    if (!itin) continue;
-    itin.events.forEach((e, i) => e.date === date && timed.push(tripEventBlock(e, itin, i)));
-    if (itin.time_zone && itin.time_zone !== tz && itin.events.some((e) => e.date === date)) {
-      tripClockNote = `${itin.name} items are in local time there (${itin.time_zone.split("/").pop()!.replace(/_/g, " ")}).`;
+  for (const { trip, itin, items } of tripDays) {
+    items.forEach((it, i) => it.start_hour != null && timed.push(tripBlock(it, trip.url, `ti${trip.id}-${i}`)));
+    if (itin?.time_zone && itin.time_zone !== tz && items.some((i) => i.start_hour != null && i.kind !== "flight")) {
+      tripClockNote = `${trip.name} plans are in local time there (${itin.time_zone.split("/").pop()!.replace(/_/g, " ")}); flights are on your clock.`;
     }
   }
 
@@ -176,52 +192,36 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
         </div>
       </div>
 
-      {itineraries.map(({ trip, itin }) => {
-        const day = itin?.days.find((d) => d.date === date);
+      {tripDays.map(({ trip, itin, items }) => {
+        const inTrip = trip.startDate <= date && date <= trip.endDate;
         const n = daysBetween(trip.startDate, date) + 1;
         const total = daysBetween(trip.startDate, trip.endDate) + 1;
+        const allDayItems = items.filter((i) => i.start_hour == null);
+        const label = { stay: "Stay", car: "Car", deadline: "Deadline", event: "All day", flight: "Flight" } as const;
         return (
           <div key={trip.id} className="trip-day">
             <div className="trip-day-head">
               <span>
-                ✈ <strong>{trip.name}</strong> <span className="muted">· day {n} of {total}</span>
+                ✈ <strong>{trip.name}</strong> {inTrip && <span className="muted">· day {n} of {total}</span>}
               </span>
               <a className="link small" href={trip.url} target="_blank" rel="noreferrer">Itinerary ↗</a>
             </div>
-            {day && (day.accommodation || day.breakfast || day.lunch || day.dinner || day.car || day.notes) ? (
+            {allDayItems.length > 0 && (
               <dl className="trip-day-facts">
-                {day.accommodation && (
-                  <>
-                    <dt>Stay</dt>
+                {allDayItems.map((i, k) => (
+                  <div key={k} className="fact">
+                    <dt>{label[i.kind]}</dt>
                     <dd>
-                      {day.stay_link ? <a href={day.stay_link} target="_blank" rel="noreferrer">{day.accommodation}</a> : day.accommodation}
-                      {day.accommodation_status && <span className={`pill ${day.accommodation_status === "booked" ? "ok" : "warn"}`}>{STATUS[day.accommodation_status]?.label ?? day.accommodation_status}</span>}
-                      {day.stay_address && <span className="muted"> · {day.stay_address}</span>}
+                      {i.title.replace(/^(Stay|Rental car):\s*/, "")}
+                      {i.status && <span className={`pill ${STATUS_TONE[i.status] ?? ""}`}>{i.status}</span>}
+                      {i.details.length > 0 && <span className="muted"> · {i.details.filter((l) => !/^https?:/.test(l)).join(" · ")}</span>}
                     </dd>
-                  </>
-                )}
-                {(day.breakfast || day.lunch || day.dinner) && (
-                  <>
-                    <dt>Meals</dt>
-                    <dd>{[day.breakfast && `B: ${day.breakfast}`, day.lunch && `L: ${day.lunch}`, day.dinner && `D: ${day.dinner}`].filter(Boolean).join(" · ")}</dd>
-                  </>
-                )}
-                {day.car && (
-                  <>
-                    <dt>Car</dt>
-                    <dd>{day.car}</dd>
-                  </>
-                )}
-                {day.notes && (
-                  <>
-                    <dt>Notes</dt>
-                    <dd>{day.notes}</dd>
-                  </>
-                )}
+                  </div>
+                ))}
               </dl>
-            ) : (
-              !itin && <p className="muted small">Itinerary details appear here once travel.jascui.com shares them.</p>
             )}
+            {itin && !itin.error && items.length === 0 && <p className="muted small">Nothing planned on the itinerary this day.</p>}
+            {(!itin || itin.error) && <TripLink trip={trip} data={data} actions={actions} />}
           </div>
         );
       })}
@@ -266,10 +266,11 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
               </>
             );
             return b.href ? (
-              <a key={b.key} className="block trip" style={style} href={b.href} target="_blank" rel="noreferrer">
+              // A div, not a link: the block holds its own links (map, reservation).
+              <div key={b.key} className="block trip" style={style} role="link" tabIndex={0} onClick={() => window.open(b.href, "_blank", "noopener")} onKeyDown={(e) => e.key === "Enter" && window.open(b.href, "_blank", "noopener")}>
                 <span className="block-sub">{clock(b.start)}–{clock(b.end)}</span>
                 {inner}
-              </a>
+              </div>
             ) : (
               <button key={b.key} className="block" style={style} onClick={b.onOpen}>
                 {inner}

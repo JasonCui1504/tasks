@@ -118,6 +118,13 @@ const SCHEMA = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS contact_log_contact ON contact_log(owner, contact_id, contact_on)`,
+  // Each trip's calendar link from travel.jascui.com ("Add to calendar"), read for the Day view.
+  `CREATE TABLE IF NOT EXISTS trip_calendars (
+    owner TEXT NOT NULL,
+    trip_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    PRIMARY KEY (owner, trip_id)
+  )`,
 ];
 
 // Columns added after a table first shipped. Each fails harmlessly once the column exists.

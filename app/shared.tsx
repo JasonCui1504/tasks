@@ -68,7 +68,7 @@ export type Data = {
   categories: string[];
   /** A trip to highlight (from a notification or the urgent box). */
   focusTrip: number | null;
-  /** Full trip itineraries from travel.jascui.com (empty until loaded, or if the travel app doesn't share them). */
+  /** Trip itineraries read from each trip's calendar link on travel.jascui.com (empty until loaded / linked). */
   itineraries: TripItinerary[];
   /** The day picked on a calendar, "YYYY-MM-DD" — what the Day view shows. */
   selectedDay: string;
@@ -92,6 +92,9 @@ export type Actions = {
   goTab: (tab: Tab, focus?: { trip?: number }) => void;
   /** Pick a day ("YYYY-MM-DD") for every calendar and the Day view. */
   selectDay: (date: string) => void;
+  /** Save a trip's calendar link from travel.jascui.com (throws a readable Error if it doesn't work). */
+  linkTripCalendar: (url: string) => Promise<void>;
+  unlinkTripCalendar: (tripId: number) => void;
 };
 
 export function Stat({ label, value, tone, active, onClick }: { label: string; value: number | string; tone?: string; active?: boolean; onClick?: () => void }) {

@@ -2137,3 +2137,25 @@ button.info-tile:hover {
 .block-sub.notes {
   color: var(--muted);
 }
+
+.trip-day-facts .fact {
+  display: contents;
+}
+.trip-link {
+  margin: 0;
+}
+.trip-link-form {
+  display: grid;
+  gap: 6px;
+}
+.trip-link-form a {
+  color: var(--subtle);
+}
+.trip-link-form .inline input {
+  flex: 1;
+  height: 32px;
+  font-size: 13px;
+}
+.block-sub a {
+  color: var(--subtle);
+}
