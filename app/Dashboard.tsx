@@ -2,7 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { daysBetween, formatDateKey, formatDue, localDateKey, money, monthlyCost, relativeDue } from "@/lib/time";
-import { CATEGORIES, REPEATS, URGENCIES, categoryInfo, type Settings, type Task, type TaskInput, type Trip } from "@/lib/types";
+import {
+  CATEGORIES,
+  REPEATS,
+  URGENCIES,
+  categoryInfo,
+  contactDueOn,
+  type CalendarEvent,
+  type CalendarEventInput,
+  type Contact,
+  type ContactInput,
+  type GiftCard,
+  type GiftCardInput,
+  type Settings,
+  type Task,
+  type TaskInput,
+  type Trip,
+} from "@/lib/types";
+import { api } from "./api-client";
+import { ContactSheet, ContactsView, daysUntilDue } from "./Contacts";
+import { EventSheet, EventsView } from "./Events";
+import { GiftCardSheet, GiftCardsView } from "./GiftCards";
 import TaskSheet from "./TaskSheet";
 import SettingsSheet from "./SettingsSheet";
 import { registerWorker, setBadge } from "./push-client";
@@ -12,9 +32,21 @@ type Props = {
   initialTasks: Task[];
   initialTrips: Trip[];
   initialSettings: Settings;
+  initialCards: GiftCard[];
+  initialEvents: CalendarEvent[];
+  initialContacts: Contact[];
   vapidKey: string | null;
   travel: { configured: boolean; url: string };
 };
+
+export type Tab = "tasks" | "events" | "people" | "cards";
+const TABS: { id: Tab; label: string; title: string }[] = [
+  { id: "tasks", label: "Tasks", title: "Tasks" },
+  { id: "events", label: "Events", title: "Events" },
+  { id: "people", label: "Stay in touch", title: "Stay in touch" },
+  { id: "cards", label: "Gift cards", title: "Gift cards" },
+];
+const TAB_KEY = "tasks.tab";
 
 type When = "all" | "overdue" | "today" | "week";
 type Bucket = "overdue" | "today" | "tomorrow" | "week" | "later" | "none";
@@ -50,25 +82,15 @@ function byDue(a: Task, b: Task) {
   return b.urgency - a.urgency || a.id - b.id;
 }
 
-async function api<T>(url: string, method: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 401) {
-    // A full load, so the login page renders fresh without the stale dashboard behind it.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = "/login";
-    throw new Error("Signed out");
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
-  return data as T;
-}
-
-export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, vapidKey, travel }: Props) {
+export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, vapidKey, travel }: Props) {
+  const [tab, setTabState] = useState<Tab>("tasks");
   const [tasks, setTasks] = useState(initialTasks);
+  const [cards, setCards] = useState(initialCards);
+  const [events, setEvents] = useState(initialEvents);
+  const [cardSheet, setCardSheet] = useState<{ card: GiftCard | null; spend?: boolean } | null>(null);
+  const [eventSheet, setEventSheet] = useState<{ event: CalendarEvent | null } | null>(null);
+  const [contacts, setContacts] = useState(initialContacts);
+  const [contactSheet, setContactSheet] = useState<{ contact: Contact | null } | null>(null);
   const [trips, setTrips] = useState(initialTrips);
   const [settings, setSettings] = useState(initialSettings);
   const [now, setNow] = useState(() => new Date());
@@ -87,12 +109,18 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // Keep relative times fresh, use this device's time zone, and refetch when the app comes back to the foreground.
   const refresh = useCallback(async () => {
     try {
-      const [{ tasks }, { trips }] = await Promise.all([
+      const [{ tasks }, { trips }, { cards }, { events }, { contacts }] = await Promise.all([
         api<{ tasks: Task[] }>("/api/tasks", "GET"),
         api<{ trips: Trip[] }>("/api/trips", "GET"),
+        api<{ cards: GiftCard[] }>("/api/gift-cards", "GET"),
+        api<{ events: CalendarEvent[] }>("/api/events", "GET"),
+        api<{ contacts: Contact[] }>("/api/contacts", "GET"),
       ]);
+      setContacts(contacts);
       setTasks(tasks);
       setTrips(trips);
+      setCards(cards);
+      setEvents(events);
     } catch {}
     setNow(new Date());
   }, []);
@@ -114,22 +142,60 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     };
   }, [initialSettings.timeZone, refresh]);
 
-  // Deep links from notifications: /?task=12 opens it, /?trip=3 shows that trip's prep.
+  const setTab = useCallback((next: Tab) => {
+    setTabState(next);
+    try {
+      localStorage.setItem(TAB_KEY, next);
+    } catch {}
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  // Deep links from notifications: /?task=12 opens it, /?trip=3 shows that trip's prep,
+  // /?event=4 and /?card=2 open those; /?tab=events picks a tab. Otherwise reopen the last tab used.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const taskId = Number(params.get("task"));
     const tripId = Number(params.get("trip"));
+    const eventId = Number(params.get("event"));
+    const cardId = Number(params.get("card"));
+    const personId = Number(params.get("person"));
+    const wanted = params.get("tab") as Tab | null;
+    let next: Tab | null = TABS.some((t) => t.id === wanted) ? wanted : null;
+    if (!next && !taskId && !tripId && !eventId && !cardId && !personId) {
+      try {
+        const saved = localStorage.getItem(TAB_KEY) as Tab | null;
+        if (TABS.some((t) => t.id === saved)) next = saved;
+      } catch {}
+    }
     if (taskId) {
       const t = initialTasks.find((x) => x.id === taskId);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the URL only works after mount
       if (t) setEditing({ task: t });
+      next = "tasks";
     }
     if (tripId) {
       setCategory("trip");
       setFocusTrip(tripId);
+      next = "tasks";
     }
-    if (taskId || tripId) window.history.replaceState(null, "", "/");
-  }, [initialTasks]);
+    if (eventId) {
+      const e = initialEvents.find((x) => x.id === eventId);
+      if (e) setEventSheet({ event: e });
+      next = "events";
+    }
+    if (cardId) {
+      const c = initialCards.find((x) => x.id === cardId);
+      if (c) setCardSheet({ card: c });
+      next = "cards";
+    }
+    if (personId) {
+      const c = initialContacts.find((x) => x.id === personId);
+      if (c) setContactSheet({ contact: c });
+      next = "people";
+    }
+    if (next) setTabState(next);
+    if (window.location.search) window.history.replaceState(null, "", "/");
+  }, [initialTasks, initialEvents, initialCards, initialContacts]);
 
   useEffect(() => {
     if (!toast) return;
@@ -215,6 +281,18 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     () => trips.filter((t) => (focusTrip == null || t.id === focusTrip) && daysBetween(localDateKey(now, tz), t.endDate) >= 0).slice(0, 6),
     [trips, focusTrip, now, tz],
   );
+  const contactsDue = contacts.filter((c) => {
+    const d = daysUntilDue(c, localDateKey(now, tz));
+    return d == null || d <= 0;
+  }).length;
+  const activeCards = cards.filter((c) => c.status === "active").length;
+  const upcomingEventCount = useMemo(() => {
+    const todayKey = localDateKey(now, tz);
+    return events.filter((e) => {
+      const d = daysBetween(todayKey, localDateKey(new Date(e.startsAt), tz));
+      return d >= 0 && d <= 7;
+    }).length;
+  }, [events, now, tz]);
   const nextTrip = trips.find((t) => daysBetween(localDateKey(now, tz), t.startDate) >= 0);
 
   // ---- actions ----
@@ -300,6 +378,133 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     }
   }
 
+  // ---- gift cards ----
+
+  function replaceCard(card: GiftCard) {
+    setCards((list) => (list.some((c) => c.id === card.id) ? list.map((c) => (c.id === card.id ? card : c)) : [...list, card]));
+  }
+
+  async function saveCard(input: GiftCardInput, existing: GiftCard | null) {
+    const { card } = existing
+      ? await api<{ card: GiftCard }>(`/api/gift-cards/${existing.id}`, "PATCH", input)
+      : await api<{ card: GiftCard }>("/api/gift-cards", "POST", input);
+    replaceCard(card);
+    setCardSheet(null);
+  }
+
+  async function spendCard(card: GiftCard, amount: number) {
+    const { card: next } = await api<{ card: GiftCard }>(`/api/gift-cards/${card.id}`, "PATCH", { action: "spend", amount });
+    replaceCard(next);
+    setCardSheet(null);
+    setToast({
+      text: next.balance > 0 ? `${money(next.balance)} left on ${card.store}` : `${card.store} card used up`,
+      undo: async () => {
+        const { card: back } = await api<{ card: GiftCard }>(`/api/gift-cards/${card.id}`, "PATCH", { balance: card.balance });
+        replaceCard(back);
+        setToast(null);
+      },
+    });
+  }
+
+  async function cardStatus(card: GiftCard, action: "used" | "reactivate") {
+    const { card: next } = await api<{ card: GiftCard }>(`/api/gift-cards/${card.id}`, "PATCH", { action });
+    replaceCard(next);
+    setCardSheet(null);
+  }
+
+  async function removeCard(card: GiftCard) {
+    await api(`/api/gift-cards/${card.id}`, "DELETE");
+    setCards((list) => list.filter((c) => c.id !== card.id));
+    setCardSheet(null);
+    setToast({
+      text: `Deleted the ${card.store} card`,
+      undo: async () => {
+        const { card: back } = await api<{ card: GiftCard }>("/api/gift-cards", "POST", {
+          store: card.store, balance: card.balance, initialAmount: card.initialAmount, expiresOn: card.expiresOn, location: card.location, notes: card.notes,
+        });
+        replaceCard(back);
+        setToast(null);
+      },
+    });
+  }
+
+  // ---- events ----
+
+  function replaceEvent(event: CalendarEvent) {
+    setEvents((list) =>
+      (list.some((e) => e.id === event.id) ? list.map((e) => (e.id === event.id ? event : e)) : [...list, event]).sort((a, b) =>
+        a.startsAt.localeCompare(b.startsAt),
+      ),
+    );
+  }
+
+  async function saveEvent(input: CalendarEventInput, existing: CalendarEvent | null) {
+    const { event } = existing
+      ? await api<{ event: CalendarEvent }>(`/api/events/${existing.id}`, "PATCH", input)
+      : await api<{ event: CalendarEvent }>("/api/events", "POST", input);
+    replaceEvent(event);
+    setEventSheet(null);
+  }
+
+  async function removeEvent(event: CalendarEvent) {
+    await api(`/api/events/${event.id}`, "DELETE");
+    setEvents((list) => list.filter((e) => e.id !== event.id));
+    setEventSheet(null);
+    setToast({
+      text: `Deleted “${event.title}”`,
+      undo: async () => {
+        const { event: back } = await api<{ event: CalendarEvent }>("/api/events", "POST", {
+          title: event.title, startsAt: event.startsAt, allDay: event.allDay, location: event.location, notes: event.notes, reminders: event.reminders,
+        });
+        replaceEvent(back);
+        setToast(null);
+      },
+    });
+  }
+
+  // ---- stay in touch ----
+
+  function replaceContact(contact: Contact) {
+    setContacts((list) =>
+      list.some((c) => c.id === contact.id) ? list.map((c) => (c.id === contact.id ? contact : c)) : [...list, contact],
+    );
+  }
+
+  async function saveContact(input: ContactInput, existing: Contact | null) {
+    const { contact } = existing
+      ? await api<{ contact: Contact }>(`/api/contacts/${existing.id}`, "PATCH", input)
+      : await api<{ contact: Contact }>("/api/contacts", "POST", input);
+    replaceContact(contact);
+    setContactSheet(null);
+  }
+
+  async function logContactToday(contact: Contact) {
+    try {
+      const { contact: next, logId } = await api<{ contact: Contact; logId: number }>(`/api/contacts/${contact.id}`, "PATCH", {
+        action: "log",
+        on: localDateKey(new Date(), tz),
+      });
+      replaceContact(next);
+      setToast({
+        text: `Logged ${contact.name} — next nudge ${formatDateKey(contactDueOn(next)!)}`,
+        undo: async () => {
+          const { contact: back } = await api<{ contact: Contact }>(`/api/contacts/${contact.id}`, "PATCH", { action: "unlog", logId });
+          replaceContact(back);
+          setToast(null);
+        },
+      });
+    } catch (err) {
+      setToast({ text: (err as Error).message });
+    }
+  }
+
+  async function removeContact(contact: Contact) {
+    await api(`/api/contacts/${contact.id}`, "DELETE");
+    setContacts((list) => list.filter((c) => c.id !== contact.id));
+    setContactSheet(null);
+    setToast({ text: `Removed ${contact.name}` });
+  }
+
   function newTask(draft: TaskInput = {}) {
     setEditing({
       task: null,
@@ -314,7 +519,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     <div className="shell">
       <header className="top">
         <div>
-          <h1>Tasks</h1>
+          <h1>{TABS.find((t) => t.id === tab)!.title}</h1>
           <p className="muted">{today}</p>
         </div>
         <div className="top-actions">
@@ -323,145 +528,222 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
               <path d="M18 16v-5a6 6 0 10-12 0v5l-2 2h16l-2-2zM10 20a2 2 0 004 0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <button className="btn primary" onClick={() => newTask()}>
+          <button
+            className="btn primary"
+            onClick={() =>
+              tab === "cards"
+                ? setCardSheet({ card: null })
+                : tab === "events"
+                  ? setEventSheet({ event: null })
+                  : tab === "people"
+                    ? setContactSheet({ contact: null })
+                    : newTask()
+            }
+          >
             <span aria-hidden>+</span> New
           </button>
         </div>
       </header>
 
-      <section className="stats" aria-label="Summary">
-        <Stat label="Overdue" value={counts.overdue} tone={counts.overdue ? "critical" : undefined} active={when === "overdue"} onClick={() => setWhen(when === "overdue" ? "all" : "overdue")} />
-        <Stat label="Today" value={counts.today} active={when === "today"} onClick={() => setWhen(when === "today" ? "all" : "today")} />
-        <Stat label="Next 7 days" value={counts.week} active={when === "week"} onClick={() => setWhen(when === "week" ? "all" : "week")} />
-        {travel.configured ? (
-          <Stat
-            label={nextTrip ? nextTrip.name : "Next trip"}
-            value={nextTrip ? `${daysBetween(localDateKey(now, tz), nextTrip.startDate)}d` : "—"}
-            active={category === "trip"}
-            onClick={() => {
-              setCategory(category === "trip" ? "all" : "trip");
-              setFocusTrip(null);
-            }}
-          />
-        ) : (
-          <Stat label="Open" value={open.length} active={false} onClick={() => setWhen("all")} />
-        )}
-      </section>
-
-      <form className="quick" onSubmit={quickAdd}>
-        <input
-          value={quick}
-          onChange={(e) => setQuick(e.target.value)}
-          placeholder={`Add a task${category !== "all" ? ` to ${categoryInfo(category).label}` : ""}…`}
-          aria-label="Quick add a task"
-          enterKeyHint="done"
-        />
-        {quick.trim() && (
-          <button type="button" className="link" onClick={() => { newTask({ title: quick.trim() }); setQuick(""); }}>
-            Details
-          </button>
-        )}
-      </form>
-
-      <nav className="chips" aria-label="Categories">
-        <Chip active={category === "all"} onClick={() => { setCategory("all"); setFocusTrip(null); }} label="All" count={open.length} />
-        {categoryList.map((id) => {
-          const info = categoryInfo(id);
-          const n = categoryCounts.get(id) ?? 0;
-          if (!n && category !== id && !["work", "trip", "subscription", "payment", "personal"].includes(id)) return null;
+      <nav className="tabs" role="tablist" aria-label="Lists">
+        {TABS.map((t) => {
+          const n =
+            t.id === "tasks"
+              ? counts.overdue + counts.today
+              : t.id === "events"
+                ? upcomingEventCount
+                : t.id === "people"
+                  ? contactsDue
+                  : activeCards;
           return (
-            <Chip
-              key={id}
-              active={category === id}
-              color={info.color}
-              onClick={() => { setCategory(category === id ? "all" : id); setFocusTrip(null); }}
-              label={info.label}
-              count={n}
-            />
+            <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+              {t.label}
+              {n > 0 && <span className={`tab-count ${t.id === "tasks" && counts.overdue ? "alert" : ""}`}>{n}</span>}
+            </button>
           );
         })}
       </nav>
 
-      <div className="toolbar">
-        <div className="seg" role="group" aria-label="Sort">
-          <button className={sort === "due" ? "on" : ""} onClick={() => setSort("due")}>By date</button>
-          <button className={sort === "urgency" ? "on" : ""} onClick={() => setSort("urgency")}>By urgency</button>
-        </div>
-        <select value={minUrgency} onChange={(e) => setMinUrgency(Number(e.target.value))} aria-label="Minimum urgency">
-          <option value={0}>Any urgency</option>
-          <option value={2}>High &amp; critical</option>
-          <option value={3}>Critical only</option>
-        </select>
-        <label className="toggle">
-          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Done
-        </label>
-        {filtering && (
-          <button className="link" onClick={() => { setCategory("all"); setWhen("all"); setMinUrgency(0); setFocusTrip(null); }}>
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {recurring && (
-        <p className="recurring">
-          {recurring.count} recurring {category === "subscription" ? "subscriptions" : "payments"} ≈{" "}
-          <strong>{money(recurring.perMonth)}</strong>/month · {money(recurring.perMonth * 12)}/year
-        </p>
+      {tab === "people" && (
+        <ContactsView
+          contacts={contacts}
+          now={now}
+          tz={tz}
+          onOpen={(contact) => setContactSheet({ contact })}
+          onLog={logContactToday}
+          onNew={() => setContactSheet({ contact: null })}
+        />
       )}
 
-      {(category === "all" || category === "trip") && !showDone && upcomingTrips.length > 0 && (
-        <section className="trips" aria-label="Upcoming trips">
-          {upcomingTrips.map((trip) => {
-            const days = daysBetween(localDateKey(now, tz), trip.startDate);
-            const prep = open.filter((t) => t.tripId === trip.id).length;
-            return (
-              <article key={trip.id} className={`trip ${focusTrip === trip.id ? "focused" : ""}`}>
-                <button className="trip-main" onClick={() => { setCategory("trip"); setFocusTrip(focusTrip === trip.id ? null : trip.id); }}>
-                  <span className="trip-when">{days > 0 ? `in ${days} day${days === 1 ? "" : "s"}` : days === 0 ? "starts today" : "underway"}</span>
-                  <span className="trip-name">{trip.name}</span>
-                  <span className="muted small">
-                    {formatDateKey(trip.startDate)} – {formatDateKey(trip.endDate)}
-                  </span>
-                  <span className="small">{prep ? `${prep} prep task${prep === 1 ? "" : "s"} open` : "No prep tasks"}</span>
-                </button>
-                <div className="trip-actions">
-                  <button className="link" onClick={() => newTask({ category: "trip", tripId: trip.id })}>+ Prep task</button>
-                  <a className="link" href={trip.url} target="_blank" rel="noreferrer">Itinerary ↗</a>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+      {tab === "cards" && (
+        <GiftCardsView cards={cards} now={now} tz={tz} onOpen={(card, spend) => setCardSheet({ card, spend })} onNew={() => setCardSheet({ card: null })} />
       )}
 
-      <main className="list">
-        {groups.length === 0 && (
-          <div className="empty">
-            <p>{showDone ? "Nothing completed recently." : filtering ? "Nothing matches these filters." : "All clear. Nothing outstanding."}</p>
-            {!showDone && <button className="btn" onClick={() => newTask()}>Add a task</button>}
-          </div>
-        )}
-        {groups.map((g) => (
-          <section key={g.key} className="group">
-            <h2 className={g.key === "overdue" ? "danger" : ""}>
-              {g.label} <span className="muted">{g.items.length}</span>
-            </h2>
-            <ul>
-              {g.items.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  now={now}
-                  tz={tz}
-                  trip={t.tripId != null ? trips.find((x) => x.id === t.tripId) : undefined}
-                  onToggle={() => (t.status === "done" ? reopen(t) : complete(t))}
-                  onOpen={() => setEditing({ task: t })}
-                />
-              ))}
-            </ul>
+      {tab === "events" && (
+        <EventsView events={events} trips={trips} now={now} tz={tz} onOpen={(event) => setEventSheet({ event })} onNew={() => setEventSheet({ event: null })} />
+      )}
+
+      {tab === "tasks" && (
+        <>
+          <section className="stats" aria-label="Summary">
+            <Stat label="Overdue" value={counts.overdue} tone={counts.overdue ? "critical" : undefined} active={when === "overdue"} onClick={() => setWhen(when === "overdue" ? "all" : "overdue")} />
+            <Stat label="Today" value={counts.today} active={when === "today"} onClick={() => setWhen(when === "today" ? "all" : "today")} />
+            <Stat label="Next 7 days" value={counts.week} active={when === "week"} onClick={() => setWhen(when === "week" ? "all" : "week")} />
+            {travel.configured ? (
+              <Stat
+                label={nextTrip ? nextTrip.name : "Next trip"}
+                value={nextTrip ? `${daysBetween(localDateKey(now, tz), nextTrip.startDate)}d` : "—"}
+                active={category === "trip"}
+                onClick={() => {
+                  setCategory(category === "trip" ? "all" : "trip");
+                  setFocusTrip(null);
+                }}
+              />
+            ) : (
+              <Stat label="Open" value={open.length} active={false} onClick={() => setWhen("all")} />
+            )}
           </section>
-        ))}
-      </main>
+
+          <form className="quick" onSubmit={quickAdd}>
+            <input
+              value={quick}
+              onChange={(e) => setQuick(e.target.value)}
+              placeholder={`Add a task${category !== "all" ? ` to ${categoryInfo(category).label}` : ""}…`}
+              aria-label="Quick add a task"
+              enterKeyHint="done"
+            />
+            {quick.trim() && (
+              <button type="button" className="link" onClick={() => { newTask({ title: quick.trim() }); setQuick(""); }}>
+                Details
+              </button>
+            )}
+          </form>
+
+          <nav className="chips" aria-label="Categories">
+            <Chip active={category === "all"} onClick={() => { setCategory("all"); setFocusTrip(null); }} label="All" count={open.length} />
+            {categoryList.map((id) => {
+              const info = categoryInfo(id);
+              const n = categoryCounts.get(id) ?? 0;
+              if (!n && category !== id && !["work", "trip", "subscription", "payment", "personal"].includes(id)) return null;
+              return (
+                <Chip
+                  key={id}
+                  active={category === id}
+                  color={info.color}
+                  onClick={() => { setCategory(category === id ? "all" : id); setFocusTrip(null); }}
+                  label={info.label}
+                  count={n}
+                />
+              );
+            })}
+          </nav>
+
+          <div className="toolbar">
+            <div className="seg" role="group" aria-label="Sort">
+              <button className={sort === "due" ? "on" : ""} onClick={() => setSort("due")}>By date</button>
+              <button className={sort === "urgency" ? "on" : ""} onClick={() => setSort("urgency")}>By urgency</button>
+            </div>
+            <select value={minUrgency} onChange={(e) => setMinUrgency(Number(e.target.value))} aria-label="Minimum urgency">
+              <option value={0}>Any urgency</option>
+              <option value={2}>High &amp; critical</option>
+              <option value={3}>Critical only</option>
+            </select>
+            <label className="toggle">
+              <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Done
+            </label>
+            {filtering && (
+              <button className="link" onClick={() => { setCategory("all"); setWhen("all"); setMinUrgency(0); setFocusTrip(null); }}>
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          {recurring && (
+            <p className="recurring">
+              {recurring.count} recurring {category === "subscription" ? "subscriptions" : "payments"} ≈{" "}
+              <strong>{money(recurring.perMonth)}</strong>/month · {money(recurring.perMonth * 12)}/year
+            </p>
+          )}
+
+          {(category === "all" || category === "trip") && !showDone && upcomingTrips.length > 0 && (
+            <section className="trips" aria-label="Upcoming trips">
+              {upcomingTrips.map((trip) => {
+                const days = daysBetween(localDateKey(now, tz), trip.startDate);
+                const prep = open.filter((t) => t.tripId === trip.id).length;
+                return (
+                  <article key={trip.id} className={`trip ${focusTrip === trip.id ? "focused" : ""}`}>
+                    <button className="trip-main" onClick={() => { setCategory("trip"); setFocusTrip(focusTrip === trip.id ? null : trip.id); }}>
+                      <span className="trip-when">{days > 0 ? `in ${days} day${days === 1 ? "" : "s"}` : days === 0 ? "starts today" : "underway"}</span>
+                      <span className="trip-name">{trip.name}</span>
+                      <span className="muted small">
+                        {formatDateKey(trip.startDate)} – {formatDateKey(trip.endDate)}
+                      </span>
+                      <span className="small">{prep ? `${prep} prep task${prep === 1 ? "" : "s"} open` : "No prep tasks"}</span>
+                    </button>
+                    <div className="trip-actions">
+                      <button className="link" onClick={() => newTask({ category: "trip", tripId: trip.id })}>+ Prep task</button>
+                      <a className="link" href={trip.url} target="_blank" rel="noreferrer">Itinerary ↗</a>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          )}
+
+          <main className="list">
+            {groups.length === 0 && (
+              <div className="empty">
+                <p>{showDone ? "Nothing completed recently." : filtering ? "Nothing matches these filters." : "All clear. Nothing outstanding."}</p>
+                {!showDone && <button className="btn" onClick={() => newTask()}>Add a task</button>}
+              </div>
+            )}
+            {groups.map((g) => (
+              <section key={g.key} className="group">
+                <h2 className={g.key === "overdue" ? "danger" : ""}>
+                  {g.label} <span className="muted">{g.items.length}</span>
+                </h2>
+                <ul>
+                  {g.items.map((t) => (
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                      now={now}
+                      tz={tz}
+                      trip={t.tripId != null ? trips.find((x) => x.id === t.tripId) : undefined}
+                      onToggle={() => (t.status === "done" ? reopen(t) : complete(t))}
+                      onOpen={() => setEditing({ task: t })}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </main>
+        </>
+      )}
+
+      {cardSheet && (
+        <GiftCardSheet
+          card={cardSheet.card}
+          focusSpend={cardSheet.spend}
+          onClose={() => setCardSheet(null)}
+          onSave={saveCard}
+          onSpend={spendCard}
+          onStatus={cardStatus}
+          onDelete={removeCard}
+        />
+      )}
+
+      {contactSheet && (
+        <ContactSheet
+          contact={contactSheet.contact}
+          onClose={() => setContactSheet(null)}
+          onSave={saveContact}
+          onDelete={removeContact}
+          onChanged={replaceContact}
+        />
+      )}
+
+      {eventSheet && <EventSheet event={eventSheet.event} onClose={() => setEventSheet(null)} onSave={saveEvent} onDelete={removeEvent} />}
 
       {editing && (
         <TaskSheet

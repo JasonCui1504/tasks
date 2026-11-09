@@ -69,7 +69,59 @@ const SCHEMA = [
     sent_at TEXT NOT NULL,
     UNIQUE (owner, key)
   )`,
+  `CREATE TABLE IF NOT EXISTS gift_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    store TEXT NOT NULL,
+    balance REAL NOT NULL DEFAULT 0,
+    initial_amount REAL,
+    expires_on TEXT,
+    location TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS gift_cards_owner ON gift_cards(owner, status)`,
+  `CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    title TEXT NOT NULL,
+    starts_at TEXT NOT NULL,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    location TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    reminders TEXT NOT NULL DEFAULT '[]',
+    reminders_from TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS events_owner_start ON events(owner, starts_at)`,
+  // Stay in touch: people to reach out to every so often, and each time you did.
+  `CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    name TEXT NOT NULL,
+    every_days INTEGER NOT NULL DEFAULT 30,
+    last_contact_on TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS contacts_owner ON contacts(owner)`,
+  `CREATE TABLE IF NOT EXISTS contact_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    contact_id INTEGER NOT NULL,
+    contact_on TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS contact_log_contact ON contact_log(owner, contact_id, contact_on)`,
 ];
+
+// Columns added after a table first shipped. Each fails harmlessly once the column exists.
+const MIGRATIONS = [`ALTER TABLE gift_cards ADD COLUMN location TEXT NOT NULL DEFAULT ''`];
 
 let clientPromise: Promise<Client> | null = null;
 
@@ -78,6 +130,7 @@ async function init(): Promise<Client> {
   if (url.startsWith("file:")) mkdirSync(dirname(resolve(url.slice(5))), { recursive: true });
   const client = createClient({ url, authToken: process.env.TASKS_DATABASE_AUTH_TOKEN || undefined });
   await client.batch(SCHEMA, "write");
+  for (const sql of MIGRATIONS) await client.execute(sql).catch(() => {});
   return client;
 }
 
