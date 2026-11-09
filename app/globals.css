@@ -1434,8 +1434,14 @@ a {
   min-width: 0;
   transition: background 0.12s;
 }
-.cal-cell:hover {
+.cal:not(.mini) .cal-cell:hover {
   background: var(--surface-2);
+}
+.cal.mini .cal-cell:hover .cal-day {
+  background: var(--surface-2);
+}
+.cal.mini .cal-cell.today:hover .cal-day {
+  background: var(--accent);
 }
 .cal-cell.outside .cal-day {
   opacity: 0.4;
@@ -1443,8 +1449,12 @@ a {
 .cal-cell.past .cal-day {
   color: var(--muted);
 }
-.cal-cell.selected {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+/* The picked day: a ring around its number (today keeps its filled circle). */
+.cal-cell.selected .cal-day {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.cal-cell.today.selected .cal-day {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent);
 }
 .cal-day {
   font-size: 13px;
@@ -1859,7 +1869,7 @@ a {
 
 /* ---------- today ---------- */
 
-.today {
+.today-list {
   display: grid;
   gap: 12px;
   align-content: start;
@@ -1875,7 +1885,7 @@ a {
 .today-section h4.danger {
   color: var(--danger);
 }
-.mobile-only .today .plain-list {
+.mobile-only .today-list .plain-list {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -2078,7 +2088,8 @@ button.info-tile:hover {
   right: 0;
   height: 2px;
   background: var(--u3);
-  z-index: 2;
+  z-index: 3;
+  pointer-events: none;
 }
 .now-line::before {
   content: "";
@@ -2158,4 +2169,140 @@ button.info-tile:hover {
 }
 .block-sub a {
   color: var(--subtle);
+}
+
+/* ---------- day view: picking and moving ---------- */
+
+.half-hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--line) 60%, transparent);
+}
+.timeline-lanes {
+  cursor: crosshair;
+}
+.timeline-lanes.picking {
+  user-select: none;
+}
+.pick {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  border-radius: 6px;
+  border: 1.5px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+.pick span {
+  position: absolute;
+  left: 8px;
+  top: 3px;
+  font-size: 11.5px;
+  color: var(--text);
+}
+.block {
+  cursor: grab;
+}
+.block.trip {
+  cursor: pointer;
+}
+.block.moving {
+  cursor: grabbing;
+  z-index: 3;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  outline: 1px solid var(--c);
+}
+.composer {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  z-index: 4;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+  cursor: default;
+}
+.composer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.composer input {
+  height: 34px;
+  font-size: 14px;
+}
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+.hint {
+  margin-top: -4px;
+}
+.end-actions {
+  align-self: end;
+  padding-bottom: 8px;
+}
+
+/* ---------- top bar: cities side by side ---------- */
+
+.info-tile.city {
+  min-width: 0;
+}
+.info-tile.city .info-label {
+  max-width: none;
+}
+.small-line {
+  font-size: 11px;
+}
+
+/* ---------- travel connection ---------- */
+
+.travel-connect {
+  margin: 0;
+}
+.travel-connect-form {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.travel-connect-form input {
+  height: 34px;
+  font-size: 14px;
+}
+
+/* ---------- day view: now line, touch ---------- */
+
+.now-label {
+  position: absolute;
+  right: 0;
+  top: -9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--u3);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.timeline {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.timeline .composer {
+  -webkit-user-select: text;
+  user-select: text;
 }

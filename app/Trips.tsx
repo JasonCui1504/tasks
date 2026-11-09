@@ -4,7 +4,7 @@ import { useState } from "react";
 import { daysBetween, formatDateKey, localDateKey } from "@/lib/time";
 import type { Trip } from "@/lib/types";
 import { byDue, TaskRow, type Actions, type Data } from "./shared";
-import { TripLink } from "./TripLink";
+import { TravelConnect } from "./TravelConnect";
 
 function countdown(trip: Trip, today: string): string {
   const days = daysBetween(today, trip.startDate);
@@ -27,6 +27,7 @@ export function TripsView({ data, actions, compact, focus }: { data: Data; actio
 
   return (
     <div className={compact ? "trip-stack compact" : "trip-stack"}>
+      <TravelConnect data={data} actions={actions} />
       {data.trips.map((trip) => (
         <TripCard key={trip.id} trip={trip} today={today} data={data} actions={actions} compact={compact} focused={(focus ?? data.focusTrip) === trip.id} />
       ))}
@@ -70,7 +71,6 @@ function TripCard({ trip, today, data, actions, compact, focused }: { trip: Trip
       ) : (
         <p className="muted small">{done ? `All ${done} prep task${done === 1 ? "" : "s"} done.` : "No prep tasks yet."}</p>
       )}
-      <TripLink trip={trip} data={data} actions={actions} />
       <form className="inline-add" onSubmit={add}>
         <input value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="Add a prep task…" aria-label={`Add a prep task for ${trip.name}`} enterKeyHint="done" />
         {quick.trim() && (

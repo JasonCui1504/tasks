@@ -38,7 +38,7 @@ export function TodayList({ data, actions, compact }: { data: Data; actions: Act
     );
 
   return (
-    <div className="today">
+    <div className="today-list">
       <form className="inline-add" onSubmit={add}>
         <input value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="Add something for today…" aria-label="Add a task for today" enterKeyHint="done" />
       </form>

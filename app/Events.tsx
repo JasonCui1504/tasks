@@ -148,17 +148,20 @@ type SheetProps = {
   event: CalendarEvent | null;
   /** For a new event: the day to start on, "YYYY-MM-DD". */
   draftDate?: string;
+  /** For a new event: preset "HH:MM" start and end (e.g. from dragging on the Day view). */
+  draftTimes?: { start: string; end?: string; title?: string };
   onClose: () => void;
   onSave: (input: CalendarEventInput, existing: CalendarEvent | null) => Promise<void>;
   onDelete: (event: CalendarEvent) => Promise<void>;
 };
 
-export function EventSheet({ event, draftDate, onClose, onSave, onDelete }: SheetProps) {
+export function EventSheet({ event, draftDate, draftTimes, onClose, onSave, onDelete }: SheetProps) {
   useSheet(onClose);
   const start = splitLocal(event?.startsAt ?? null, event?.allDay ?? false);
-  const [title, setTitle] = useState(event?.title ?? "");
+  const [title, setTitle] = useState(event?.title ?? draftTimes?.title ?? "");
   const [date, setDate] = useState(start.date || draftDate || "");
-  const [time, setTime] = useState(start.time);
+  const [time, setTime] = useState(start.time || draftTimes?.start || "");
+  const [endTime, setEndTime] = useState(event?.endsAt && !event.allDay ? splitLocal(event.endsAt, false).time : (draftTimes?.end ?? ""));
   const [location, setLocation] = useState(event?.location ?? "");
   const [reminders, setReminders] = useState<number[]>(event?.reminders ?? DEFAULT_EVENT_REMINDERS);
   const [notes, setNotes] = useState(event?.notes ?? "");
@@ -171,11 +174,16 @@ export function EventSheet({ event, draftDate, onClose, onSave, onDelete }: Shee
     if (!date) return setError("Pick a date.");
     setBusy(true);
     setError("");
+    const startsAt = new Date(`${date}T${time || "09:00"}`);
+    let endsAt: Date | null = time && endTime ? new Date(`${date}T${endTime}`) : null;
+    // An end earlier than the start runs past midnight.
+    if (endsAt && endsAt <= startsAt) endsAt = new Date(endsAt.getTime() + 86_400_000);
     try {
       await onSave(
         {
           title: title.trim(),
-          startsAt: new Date(`${date}T${time || "09:00"}`).toISOString(),
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt ? endsAt.toISOString() : null,
           allDay: !time,
           location,
           reminders,
@@ -205,13 +213,18 @@ export function EventSheet({ event, draftDate, onClose, onSave, onDelete }: Shee
             <Field label="Date">
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
-            <Field label="Time" hint={date && !time ? "All day" : undefined}>
+            <Field label="Starts" hint={date && !time ? "All day" : undefined}>
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!date} />
             </Field>
           </div>
           {time && (
-            <div className="quick-dates">
-              <button type="button" className="link" onClick={() => setTime("")}>Make all-day</button>
+            <div className="row2">
+              <Field label="Ends" hint="optional">
+                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </Field>
+              <div className="quick-dates end-actions">
+                <button type="button" className="link" onClick={() => { setTime(""); setEndTime(""); }}>Make all-day</button>
+              </div>
             </div>
           )}
 

@@ -74,19 +74,22 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   const [tz, setTz] = useState(initialSettings.timeZone);
 
   const [editing, setEditing] = useState<TaskSheetState | null>(null);
-  const [eventSheet, setEventSheet] = useState<{ event: CalendarEvent | null; date?: string } | null>(null);
+  const [eventSheet, setEventSheet] = useState<{ event: CalendarEvent | null; date?: string; times?: { start: string; end?: string; title?: string } } | null>(null);
   const [cardSheet, setCardSheet] = useState<{ card: GiftCard | null; spend?: boolean } | null>(null);
   const [contactSheet, setContactSheet] = useState<{ contact: Contact | null } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [focusTrip, setFocusTrip] = useState<number | null>(null);
   const [itineraries, setItineraries] = useState<TripItinerary[]>([]);
+  const [travelLink, setTravelLink] = useState<Data["travelLink"]>({ connected: false, username: "" });
   const [selectedDay, setSelectedDay] = useState(() => localDateKey(new Date(), initialSettings.timeZone));
 
   // Trip itineraries load after the page, so a slow travel app never holds it up.
   const loadItineraries = useCallback(async () => {
     try {
-      setItineraries((await api<{ itineraries: TripItinerary[] }>("/api/itinerary", "GET")).itineraries);
+      const r = await api<{ itineraries: TripItinerary[]; status: Data["travelLink"] }>("/api/itinerary", "GET");
+      setItineraries(r.itineraries);
+      setTravelLink(r.status);
     } catch {}
   }, []);
 
@@ -284,7 +287,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       try {
         const { task } = await api<{ task: Task }>("/api/tasks", "POST", input);
         replace(task);
-        setToast({ text: `Added “${task.title}” — tap it to set a date and reminders.` });
+        setToast({ text: task.dueAt ? `Added “${task.title}”` : `Added “${task.title}” — tap it to set a date and reminders.` });
       } catch (err) {
         setToast({ text: (err as Error).message });
       }
@@ -316,7 +319,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       text: `Deleted “${event.title}”`,
       undo: async () => {
         const { event: back } = await api<{ event: CalendarEvent }>("/api/events", "POST", {
-          title: event.title, startsAt: event.startsAt, allDay: event.allDay, location: event.location, notes: event.notes, reminders: event.reminders,
+          title: event.title, startsAt: event.startsAt, endsAt: event.endsAt, allDay: event.allDay, location: event.location, notes: event.notes, reminders: event.reminders,
         });
         replaceEvent(back);
         setToast(null);
@@ -421,8 +424,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // ---- what every view gets ----
 
   const data: Data = useMemo(
-    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip, itineraries, selectedDay }),
-    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList, focusTrip, itineraries, selectedDay],
+    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip, itineraries, travelLink, selectedDay }),
+    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList, focusTrip, itineraries, travelLink, selectedDay],
   );
 
   const actions: Actions = useMemo(
@@ -432,28 +435,54 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       toggleTask: (t) => (t.status === "done" ? reopen(t) : complete(t)),
       addTask,
       openEvent: (event) => setEventSheet({ event }),
-      newEvent: (date) => setEventSheet({ event: null, date }),
+      newEvent: (date, times) => setEventSheet({ event: null, date, times }),
+      updateTask: async (t, input) => {
+        try {
+          replace((await api<{ task: Task }>(`/api/tasks/${t.id}`, "PATCH", input)).task);
+        } catch (err) {
+          setToast({ text: (err as Error).message });
+        }
+      },
+      updateEvent: async (e, input) => {
+        try {
+          const { event } = await api<{ event: CalendarEvent }>(`/api/events/${e.id}`, "PATCH", input);
+          setEvents((list) => list.map((x) => (x.id === event.id ? event : x)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
+        } catch (err) {
+          setToast({ text: (err as Error).message });
+        }
+      },
+      createEvent: async (input) => {
+        try {
+          const { event } = await api<{ event: CalendarEvent }>("/api/events", "POST", input);
+          setEvents((list) => [...list, event].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
+          setToast({ text: `Added “${event.title}”` });
+        } catch (err) {
+          setToast({ text: (err as Error).message });
+        }
+      },
       openCard: (card, spend) => setCardSheet({ card, spend }),
       newCard: () => setCardSheet({ card: null }),
       openContact: (contact) => setContactSheet({ contact }),
       newContact: () => setContactSheet({ contact: null }),
       logContact: logContactToday,
       selectDay: setSelectedDay,
-      linkTripCalendar: async (url) => {
-        const { itinerary } = await api<{ itinerary: TripItinerary }>("/api/itinerary", "PUT", { url });
-        setItineraries((list) => [...list.filter((i) => i.id !== itinerary.id), itinerary]);
-        setToast({ text: "Itinerary linked — trip days now show the plan." });
+      connectTravel: async (username, password) => {
+        const r = await api<{ itineraries: TripItinerary[]; status: Data["travelLink"] }>("/api/itinerary", "POST", { username, password });
+        setItineraries(r.itineraries);
+        setTravelLink(r.status);
+        setToast({ text: "Connected — trip days now show the itinerary." });
       },
-      unlinkTripCalendar: (tripId) => {
-        setItineraries((list) => list.filter((i) => i.id !== tripId));
-        api(`/api/itinerary?trip=${tripId}`, "DELETE").catch(() => {});
+      disconnectTravel: () => {
+        setItineraries([]);
+        setTravelLink({ connected: false, username: "" });
+        api("/api/itinerary", "DELETE").catch(() => {});
       },
       goTab: (next, focus) => {
         setTab(next);
         if (focus?.trip != null) setFocusTrip(focus.trip);
       },
     }),
-    [reopen, complete, addTask, logContactToday, setTab],
+    [reopen, complete, addTask, logContactToday, setTab, replace],
   );
 
   // ---- tab counts ----
@@ -583,7 +612,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       )}
 
       {eventSheet && (
-        <EventSheet event={eventSheet.event} draftDate={eventSheet.date} onClose={() => setEventSheet(null)} onSave={saveEvent} onDelete={removeEvent} />
+        <EventSheet event={eventSheet.event} draftDate={eventSheet.date} draftTimes={eventSheet.times} onClose={() => setEventSheet(null)} onSave={saveEvent} onDelete={removeEvent} />
       )}
 
       {cardSheet && (

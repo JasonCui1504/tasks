@@ -88,6 +88,7 @@ const SCHEMA = [
     owner TEXT NOT NULL,
     title TEXT NOT NULL,
     starts_at TEXT NOT NULL,
+    ends_at TEXT,
     all_day INTEGER NOT NULL DEFAULT 0,
     location TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
@@ -118,17 +119,25 @@ const SCHEMA = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS contact_log_contact ON contact_log(owner, contact_id, contact_on)`,
-  // Each trip's calendar link from travel.jascui.com ("Add to calendar"), read for the Day view.
-  `CREATE TABLE IF NOT EXISTS trip_calendars (
-    owner TEXT NOT NULL,
-    trip_id INTEGER NOT NULL,
-    url TEXT NOT NULL,
-    PRIMARY KEY (owner, trip_id)
+  // Signed in to travel.jascui.com to read trip itineraries: the travel app's
+  // session token, plus the password encrypted with TASKS_SESSION_SECRET so the
+  // session can be renewed when it expires (every 30 days). Deleted on Disconnect.
+  `CREATE TABLE IF NOT EXISTS travel_link (
+    owner TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    secret TEXT NOT NULL,
+    session TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
   )`,
 ];
 
 // Columns added after a table first shipped. Each fails harmlessly once the column exists.
-const MIGRATIONS = [`ALTER TABLE gift_cards ADD COLUMN location TEXT NOT NULL DEFAULT ''`];
+const MIGRATIONS = [
+  `ALTER TABLE gift_cards ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE events ADD COLUMN ends_at TEXT`,
+  // Replaced by travel_link (itineraries are read through a travel.jascui.com sign-in, not pasted links).
+  `DROP TABLE IF EXISTS trip_calendars`,
+];
 
 let clientPromise: Promise<Client> | null = null;
 

@@ -5,17 +5,16 @@ import { greeting } from "@/lib/greeting";
 import { daysBetween, localDateKey, zonedParts } from "@/lib/time";
 import type { Data } from "./shared";
 
-// The workspace's top line: a time-of-day message, a live clock, the time in
-// Boulder and Stanford, today's and tomorrow's weather with sunrise/sunset
-// (Open-Meteo, free and keyless, fetched by the browser), and the countdown to
-// the next trip from travel.jascui.com.
+// The workspace's top line: a time-of-day message, a live clock, Boulder and
+// Stanford side by side (local time, weather now / today / tomorrow, sunrise
+// and sunset — Open-Meteo, free and keyless, fetched by the browser), and the
+// countdown to the next trip from travel.jascui.com.
 
 type Place = { id: "boulder" | "stanford"; name: string; lat: number; lon: number; tz: string };
 const PLACES: Place[] = [
   { id: "boulder", name: "Boulder", lat: 40.015, lon: -105.2705, tz: "America/Denver" },
   { id: "stanford", name: "Stanford", lat: 37.4275, lon: -122.1697, tz: "America/Los_Angeles" },
 ];
-const PLACE_KEY = "tasks.weather.place";
 
 type Weather = {
   now: { temp: number; code: number } | null;
@@ -40,10 +39,9 @@ const hhmm = (iso: string) => {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 };
 
-function useWeather(place: Place | null): Weather | null {
+function useWeather(place: Place): Weather | null {
   const [weather, setWeather] = useState<Weather | null>(null);
   useEffect(() => {
-    if (!place) return;
     let stop = false;
     const load = async () => {
       try {
@@ -83,33 +81,48 @@ function timeIn(now: Date, tz: string, seconds = false) {
   return now.toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", second: seconds ? "2-digit" : undefined });
 }
 
+function CityTile({ place, clock }: { place: Place; clock: Date | null }) {
+  const weather = useWeather(place);
+  const [w0, w1] = weather?.days ?? [];
+  return (
+    <div className="info-tile city" title={`${place.name} weather`}>
+      <span className="info-label">
+        {place.name} · <span className="mono">{clock ? timeIn(clock, place.tz) : "--:--"}</span>
+      </span>
+      <span className="info-value">
+        {w0 ? (
+          <>
+            {sky(weather?.now?.code ?? w0.code).icon} {weather?.now ? `${weather.now.temp}°` : ""} <span className="info-sub">{w0.max}°/{w0.min}°</span>
+            {w1 && (
+              <span className="info-sub">
+                {" "}
+                · Tmrw {sky(w1.code).icon} {w1.max}°/{w1.min}°{w1.rain >= 20 ? ` ${w1.rain}%` : ""}
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="info-sub">Weather…</span>
+        )}
+      </span>
+      {w0 && (
+        <span className="info-sub small-line">
+          ↑ {hhmm(w0.sunrise)} · ↓ {hhmm(w0.sunset)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function TopInfo({ data, compact }: { data: Data; compact?: boolean }) {
   // The clock ticks every second; it starts empty so the server render and the first client render agree.
   const [clock, setClock] = useState<Date | null>(null);
-  const [place, setPlace] = useState<Place | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the clock only exists in the browser
     setClock(new Date());
     const t = setInterval(() => setClock(new Date()), 1000);
-    let id: string | null = null;
-    try {
-      id = localStorage.getItem(PLACE_KEY);
-    } catch {}
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setPlace(PLACES.find((p) => p.id === id) ?? (tz === "America/Denver" ? PLACES[0] : PLACES[1]));
     return () => clearInterval(t);
   }, []);
-
-  const weather = useWeather(place);
-
-  function switchPlace() {
-    const next = place?.id === "boulder" ? PLACES[1] : PLACES[0];
-    setPlace(next);
-    try {
-      localStorage.setItem(PLACE_KEY, next.id);
-    } catch {}
-  }
 
   const now = clock ?? data.now;
   const parts = zonedParts(now, data.tz);
@@ -117,12 +130,10 @@ export function TopInfo({ data, compact }: { data: Data; compact?: boolean }) {
   const message = greeting(parts.h, weekday);
   const dateLine = now.toLocaleDateString("en-US", { timeZone: data.tz, weekday: "long", month: "long", day: "numeric" });
 
-  // Next trip: the first that hasn't started yet, or the one underway.
+  // Next trip: the first that hasn't ended.
   const today = localDateKey(now, data.tz);
   const trip = data.trips.find((t) => t.endDate >= today);
   const tripDays = trip ? daysBetween(today, trip.startDate) : null;
-
-  const [w0, w1] = weather?.days ?? [];
 
   const tiles = (
     <>
@@ -131,40 +142,8 @@ export function TopInfo({ data, compact }: { data: Data; compact?: boolean }) {
         <span className="info-value mono">{clock ? timeIn(clock, data.tz, true) : "--:--:--"}</span>
       </div>
       {PLACES.map((p) => (
-        <div key={p.id} className="info-tile">
-          <span className="info-label">{p.name}</span>
-          <span className="info-value mono">{clock ? timeIn(clock, p.tz) : "--:--"}</span>
-        </div>
+        <CityTile key={p.id} place={p} clock={clock} />
       ))}
-      <button className="info-tile" onClick={switchPlace} title={`Weather for ${place?.name ?? ""} — click to switch`}>
-        <span className="info-label">Today · {place?.name ?? "…"}</span>
-        <span className="info-value">
-          {w0 ? (
-            <>
-              {sky(weather?.now?.code ?? w0.code).icon} {weather?.now ? `${weather.now.temp}°` : ""}{" "}
-              <span className="info-sub">{w0.max}° / {w0.min}°</span>
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
-      </button>
-      <button className="info-tile" onClick={switchPlace} title={`Weather for ${place?.name ?? ""} — click to switch`}>
-        <span className="info-label">Tomorrow</span>
-        <span className="info-value">
-          {w1 ? (
-            <>
-              {sky(w1.code).icon} {w1.max}° <span className="info-sub">/ {w1.min}°{w1.rain >= 20 ? ` · ${w1.rain}% rain` : ""}</span>
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
-      </button>
-      <div className="info-tile">
-        <span className="info-label">Sunrise · Sunset</span>
-        <span className="info-value">{w0 ? `${hhmm(w0.sunrise)} · ${hhmm(w0.sunset)}` : "—"}</span>
-      </div>
       <div className="info-tile">
         <span className="info-label">{trip ? `Next trip · ${trip.name}` : "Next trip"}</span>
         <span className="info-value">
