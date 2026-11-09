@@ -192,39 +192,14 @@ export function ContactSheet({ contact, onClose, onSave, onDelete, onChanged }: 
       <form className="sheet" onSubmit={submit} aria-label={contact ? "Edit person" : "New person"}>
         <div className="sheet-head">
           <button type="button" className="link" onClick={onClose}>Cancel</button>
-          <strong>{contact ? contact.name : "Stay in touch with…"}</strong>
+          <strong>{contact ? contact.name : "New person"}</strong>
           <button className="link strong" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
         </div>
 
         <div className="sheet-body">
-          {contact && (
-            <div className="card spend">
-              <div className="setting-row">
-                <span className="field-label">Log a catch-up</span>
-                {contact.lastContactOn && <span className="muted small">Last: {formatDateKey(contact.lastContactOn)}</span>}
-              </div>
-              <div className="row2">
-                <input type="date" value={logOn} max={todayKey()} onChange={(e) => setLogOn(e.target.value)} aria-label="When" />
-                <input
-                  value={logNote}
-                  onChange={(e) => setLogNote(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addLog();
-                    }
-                  }}
-                  placeholder="Called, texted, coffee…"
-                  aria-label="Note"
-                />
-              </div>
-              <button type="button" className="btn primary" onClick={addLog} disabled={busy || !logOn}>
-                Log it
-              </button>
-            </div>
-          )}
-
-          <input className="title-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" autoFocus={!contact} aria-label="Name" />
+          <Field label="Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Who do you want to keep up with?" autoFocus={!contact} autoComplete="off" />
+          </Field>
 
           <Field label="Reach out">
             <div className="chips wrap">
@@ -244,7 +219,30 @@ export function ContactSheet({ contact, onClose, onSave, onDelete, onChanged }: 
             )}
           </Field>
 
-          {!contact && (
+          {contact ? (
+            <Field label="Last reached out" hint={contact.lastContactOn ? formatDateKey(contact.lastContactOn) : "never logged"}>
+              <div className="card spend">
+                <div className="row2">
+                  <input type="date" value={logOn} max={todayKey()} onChange={(e) => setLogOn(e.target.value)} aria-label="When" />
+                  <input
+                    value={logNote}
+                    onChange={(e) => setLogNote(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addLog();
+                      }
+                    }}
+                    placeholder="Called, texted, coffee…"
+                    aria-label="Note"
+                  />
+                </div>
+                <button type="button" className="btn primary" onClick={addLog} disabled={busy || !logOn}>
+                  Log a catch-up
+                </button>
+              </div>
+            </Field>
+          ) : (
             <Field label="Last reached out" hint={lastOn ? undefined : "optional"}>
               <input type="date" value={lastOn} max={todayKey()} onChange={(e) => setLastOn(e.target.value)} />
               <div className="quick-dates">

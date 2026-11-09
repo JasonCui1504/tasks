@@ -1,14 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { daysBetween, formatDateKey, localDateKey, relativeDue } from "@/lib/time";
-import { DEFAULT_EVENT_REMINDERS, REMINDER_PRESETS, type CalendarEvent, type CalendarEventInput, type Trip } from "@/lib/types";
+import { daysBetween, localDateKey, relativeDue } from "@/lib/time";
+import { DEFAULT_EVENT_REMINDERS, REMINDER_PRESETS, type CalendarEvent, type CalendarEventInput } from "@/lib/types";
 import { Field, splitLocal, useSheet } from "./form";
 
-// One row in the list: an event of yours, or a trip from travel.jascui.com (read-only).
-type Item =
-  | { kind: "event"; key: string; date: string; sort: string; event: CalendarEvent }
-  | { kind: "trip"; key: string; date: string; sort: string; trip: Trip };
+type Item = { key: string; date: string; sort: string; event: CalendarEvent };
 
 function groupLabel(date: string, today: string): string {
   const d = daysBetween(today, date);
@@ -24,38 +21,28 @@ function groupLabel(date: string, today: string): string {
 
 type ViewProps = {
   events: CalendarEvent[];
-  trips: Trip[];
   now: Date;
   tz: string;
   onOpen: (event: CalendarEvent) => void;
   onNew: () => void;
 };
 
-export function EventsView({ events, trips, now, tz, onOpen, onNew }: ViewProps) {
+export function EventsView({ events, now, tz, onOpen, onNew }: ViewProps) {
   const [past, setPast] = useState(false);
   const today = localDateKey(now, tz);
 
   const items = useMemo(() => {
-    const list: Item[] = [
-      ...events.map((e) => ({ kind: "event" as const, key: `e${e.id}`, date: localDateKey(new Date(e.startsAt), tz), sort: e.startsAt, event: e })),
-      ...trips.map((t) => ({ kind: "trip" as const, key: `t${t.id}`, date: t.startDate, sort: t.startDate + "T00:00:00Z", trip: t })),
-    ];
+    const list: Item[] = events.map((e) => ({ key: `e${e.id}`, date: localDateKey(new Date(e.startsAt), tz), sort: e.startsAt, event: e }));
     // An event counts as upcoming for the rest of the day it's on (an all-day one, or one that's still to start).
-    const upcoming = (i: Item) =>
-      i.kind === "trip"
-        ? i.trip.endDate >= today
-        : i.event.allDay
-          ? i.date >= today
-          : Date.parse(i.event.startsAt) > now.getTime() - 60 * 60_000;
+    const upcoming = (i: Item) => (i.event.allDay ? i.date >= today : Date.parse(i.event.startsAt) > now.getTime() - 60 * 60_000);
     return list
       .filter((i) => (past ? !upcoming(i) : upcoming(i)))
       .sort((a, b) => (past ? b.sort.localeCompare(a.sort) : a.sort.localeCompare(b.sort)));
-  }, [events, trips, past, today, now, tz]);
+  }, [events, past, today, now, tz]);
 
   const groups = useMemo(() => {
     const out: { label: string; items: Item[] }[] = [];
     for (const i of items) {
-      // A trip that's already underway sits under Today.
       const label = past ? monthLabel(i.date) : groupLabel(i.date < today ? today : i.date, today);
       const last = out[out.length - 1];
       if (last && last.label === label) last.items.push(i);
@@ -103,7 +90,7 @@ export function EventsView({ events, trips, now, tz, onOpen, onNew }: ViewProps)
 
       {groups.length === 0 && (
         <div className="empty">
-          <p>{past ? "Nothing in the last 60 days." : "Nothing coming up. Add birthdays, appointments, concerts…"}</p>
+          <p>{past ? "Nothing in the last 60 days." : "Nothing coming up. Add birthdays, appointments, concerts… (Trips have their own tab.)"}</p>
           {!past && <button className="btn" onClick={onNew}>Add an event</button>}
         </div>
       )}
@@ -113,13 +100,9 @@ export function EventsView({ events, trips, now, tz, onOpen, onNew }: ViewProps)
             {g.label} <span className="muted">{g.items.length}</span>
           </h2>
           <ul>
-            {g.items.map((i) =>
-              i.kind === "event" ? (
-                <EventRow key={i.key} event={i.event} date={i.date} now={now} tz={tz} onOpen={() => onOpen(i.event)} />
-              ) : (
-                <TripRow key={i.key} trip={i.trip} today={today} />
-              ),
-            )}
+            {g.items.map((i) => (
+              <EventRow key={i.key} event={i.event} date={i.date} now={now} tz={tz} onOpen={() => onOpen(i.event)} />
+            ))}
           </ul>
         </section>
       ))}
@@ -161,36 +144,20 @@ function EventRow({ event: e, date, now, tz, onOpen }: { event: CalendarEvent; d
   );
 }
 
-function TripRow({ trip, today }: { trip: Trip; today: string }) {
-  const days = daysBetween(today, trip.startDate);
-  const when = days > 0 ? `In ${days} day${days === 1 ? "" : "s"}` : trip.endDate >= today ? "Underway" : "Past";
-  return (
-    <li className="task event-row">
-      <DateBlock date={trip.startDate} />
-      <a className="task-main" href={trip.url} target="_blank" rel="noreferrer">
-        <span className="task-title">✈ {trip.name}</span>
-        <span className="task-meta">
-          <span>{formatDateKey(trip.startDate)} – {formatDateKey(trip.endDate)}</span>
-          <span>{when}</span>
-          <span>Trip · itinerary ↗</span>
-        </span>
-      </a>
-    </li>
-  );
-}
-
 type SheetProps = {
   event: CalendarEvent | null;
+  /** For a new event: the day to start on, "YYYY-MM-DD". */
+  draftDate?: string;
   onClose: () => void;
   onSave: (input: CalendarEventInput, existing: CalendarEvent | null) => Promise<void>;
   onDelete: (event: CalendarEvent) => Promise<void>;
 };
 
-export function EventSheet({ event, onClose, onSave, onDelete }: SheetProps) {
+export function EventSheet({ event, draftDate, onClose, onSave, onDelete }: SheetProps) {
   useSheet(onClose);
   const start = splitLocal(event?.startsAt ?? null, event?.allDay ?? false);
   const [title, setTitle] = useState(event?.title ?? "");
-  const [date, setDate] = useState(start.date);
+  const [date, setDate] = useState(start.date || draftDate || "");
   const [time, setTime] = useState(start.time);
   const [location, setLocation] = useState(event?.location ?? "");
   const [reminders, setReminders] = useState<number[]>(event?.reminders ?? DEFAULT_EVENT_REMINDERS);
