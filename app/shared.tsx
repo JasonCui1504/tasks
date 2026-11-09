@@ -8,6 +8,8 @@ import {
   REPEATS,
   URGENCIES,
   categoryInfo,
+  type Booking,
+  type BookingInput,
   type CalendarEvent,
   type CalendarEventInput,
   type Contact,
@@ -18,7 +20,7 @@ import {
   type TripItinerary,
 } from "@/lib/types";
 
-export type Tab = "today" | "tasks" | "calendar" | "events" | "trips" | "people" | "cards";
+export type Tab = "today" | "tasks" | "calendar" | "events" | "trips" | "tracking" | "people" | "cards";
 
 export type Bucket = "overdue" | "today" | "tomorrow" | "week" | "later" | "none";
 
@@ -62,6 +64,8 @@ export type Data = {
   events: CalendarEvent[];
   cards: GiftCard[];
   contacts: Contact[];
+  /** Flights, trains, cars, hotels… entered in Tracking. */
+  bookings: Booking[];
   now: Date;
   tz: string;
   travelConfigured: boolean;
@@ -93,6 +97,8 @@ export type Actions = {
   createEvent: (input: CalendarEventInput) => Promise<void>;
   openCard: (c: GiftCard, spend?: boolean) => void;
   newCard: () => void;
+  openBooking: (b: Booking) => void;
+  newBooking: (draft?: BookingInput) => void;
   openContact: (c: Contact) => void;
   newContact: () => void;
   logContact: (c: Contact) => void;

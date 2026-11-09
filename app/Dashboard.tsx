@@ -5,6 +5,8 @@ import { daysBetween, formatDateKey, formatDue, localDateKey, money } from "@/li
 import {
   CATEGORIES,
   contactDueOn,
+  type Booking,
+  type BookingInput,
   type CalendarEvent,
   type CalendarEventInput,
   type Contact,
@@ -24,6 +26,8 @@ import { EventSheet, EventsView } from "./Events";
 import { GiftCardSheet, GiftCardsView } from "./GiftCards";
 import TaskSheet from "./TaskSheet";
 import SettingsSheet from "./SettingsSheet";
+import { BookingSheet } from "./BookingSheet";
+import { ToBookView, TrackingView, trackingCount } from "./Tracking";
 import { TripsView } from "./Trips";
 import { UrgentCallout } from "./Urgent";
 import { GridWorkspace } from "./Grid";
@@ -42,6 +46,7 @@ type Props = {
   initialCards: GiftCard[];
   initialEvents: CalendarEvent[];
   initialContacts: Contact[];
+  initialBookings: Booking[];
   vapidKey: string | null;
   travel: { configured: boolean; url: string };
 };
@@ -53,6 +58,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "events", label: "Events" },
   { id: "trips", label: "Trips" },
+  { id: "tracking", label: "Tracking" },
   { id: "people", label: "Stay in touch" },
   { id: "cards", label: "Gift cards" },
 ];
@@ -62,13 +68,14 @@ const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 type TaskSheetState = { task: Task | null; draft?: TaskInput };
 
-export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, vapidKey, travel }: Props) {
+export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, initialBookings, vapidKey, travel }: Props) {
   const [tab, setTabState] = useState<Tab>("today");
   const [tasks, setTasks] = useState(initialTasks);
   const [trips, setTrips] = useState(initialTrips);
   const [events, setEvents] = useState(initialEvents);
   const [cards, setCards] = useState(initialCards);
   const [contacts, setContacts] = useState(initialContacts);
+  const [bookings, setBookings] = useState(initialBookings);
   const [settings, setSettings] = useState(initialSettings);
   const [now, setNow] = useState(() => new Date());
   const [tz, setTz] = useState(initialSettings.timeZone);
@@ -77,6 +84,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   const [eventSheet, setEventSheet] = useState<{ event: CalendarEvent | null; date?: string; times?: { start: string; end?: string; title?: string } } | null>(null);
   const [cardSheet, setCardSheet] = useState<{ card: GiftCard | null; spend?: boolean } | null>(null);
   const [contactSheet, setContactSheet] = useState<{ contact: Contact | null } | null>(null);
+  const [bookingSheet, setBookingSheet] = useState<{ booking: Booking | null; draft?: BookingInput } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [focusTrip, setFocusTrip] = useState<number | null>(null);
@@ -96,18 +104,20 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // Keep relative times fresh, use this device's time zone, and refetch when the app comes back to the foreground.
   const refresh = useCallback(async () => {
     try {
-      const [{ tasks }, { trips }, { cards }, { events }, { contacts }] = await Promise.all([
+      const [{ tasks }, { trips }, { cards }, { events }, { contacts }, { bookings }] = await Promise.all([
         api<{ tasks: Task[] }>("/api/tasks", "GET"),
         api<{ trips: Trip[] }>("/api/trips", "GET"),
         api<{ cards: GiftCard[] }>("/api/gift-cards", "GET"),
         api<{ events: CalendarEvent[] }>("/api/events", "GET"),
         api<{ contacts: Contact[] }>("/api/contacts", "GET"),
+        api<{ bookings: Booking[] }>("/api/bookings", "GET"),
       ]);
       setTasks(tasks);
       setTrips(trips);
       setCards(cards);
       setEvents(events);
       setContacts(contacts);
+      setBookings(bookings);
       loadItineraries();
     } catch {}
     setNow(new Date());
@@ -138,15 +148,15 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     } catch {}
   }, []);
 
-  // Deep links from notifications: /?task=12, /?event=4, /?card=2, /?person=5 open those;
+  // Deep links from notifications: /?task=12, /?event=4, /?card=2, /?person=5, /?booking=7 open those;
   // /?trip=3 shows that trip; /?tab=calendar picks a tab. Otherwise reopen the last tab used.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = (k: string) => Number(params.get(k)) || 0;
-    const [taskId, tripId, eventId, cardId, personId] = ["task", "trip", "event", "card", "person"].map(id);
+    const [taskId, tripId, eventId, cardId, personId, bookingId] = ["task", "trip", "event", "card", "person", "booking"].map(id);
     const wanted = params.get("tab") as Tab | null;
     let next: Tab | null = TABS.some((t) => t.id === wanted) ? wanted : null;
-    if (!next && !taskId && !tripId && !eventId && !cardId && !personId) {
+    if (!next && !taskId && !tripId && !eventId && !cardId && !personId && !bookingId) {
       try {
         const saved = localStorage.getItem(TAB_KEY) as Tab | null;
         if (TABS.some((t) => t.id === saved)) next = saved;
@@ -177,9 +187,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       if (c) setContactSheet({ contact: c });
       next = "people";
     }
+    if (bookingId) {
+      const b = initialBookings.find((x) => x.id === bookingId);
+      if (b) setBookingSheet({ booking: b });
+      next = "tracking";
+    }
     if (next) setTabState(next);
     if (window.location.search) window.history.replaceState(null, "", "/");
-  }, [initialTasks, initialEvents, initialCards, initialContacts]);
+  }, [initialTasks, initialEvents, initialCards, initialContacts, initialBookings]);
 
   // Bring a focused trip into view once its tab is showing.
   useEffect(() => {
@@ -377,6 +392,36 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     });
   }
 
+  // ---- tracking (bookings) ----
+
+  function sortBookings(list: Booking[]) {
+    return [...list].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime) || a.id - b.id);
+  }
+
+  async function saveBooking(input: BookingInput, existing: Booking | null) {
+    const { booking } = existing
+      ? await api<{ booking: Booking }>(`/api/bookings/${existing.id}`, "PATCH", input)
+      : await api<{ booking: Booking }>("/api/bookings", "POST", input);
+    setBookings((list) => sortBookings([...list.filter((b) => b.id !== booking.id), booking]));
+    setBookingSheet(null);
+  }
+
+  async function removeBooking(booking: Booking) {
+    await api(`/api/bookings/${booking.id}`, "DELETE");
+    setBookings((list) => list.filter((b) => b.id !== booking.id));
+    setBookingSheet(null);
+    setToast({
+      text: "Booking deleted",
+      undo: async () => {
+        const { kind, name, number, from, to, startDate, startTime, endDate, endTime, confirmation, cancelBy, status, tripId, cost, notes } = booking;
+        const input: BookingInput = { kind, name, number, from, to, startDate, startTime, endDate, endTime, confirmation, cancelBy, status, tripId, cost, notes };
+        const { booking: back } = await api<{ booking: Booking }>("/api/bookings", "POST", input);
+        setBookings((list) => sortBookings([...list, back]));
+        setToast(null);
+      },
+    });
+  }
+
   // ---- stay in touch ----
 
   const replaceContact = useCallback((contact: Contact) => {
@@ -424,8 +469,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // ---- what every view gets ----
 
   const data: Data = useMemo(
-    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip, itineraries, travelLink, selectedDay }),
-    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList, focusTrip, itineraries, travelLink, selectedDay],
+    () => ({ tasks, trips, events, cards, contacts, bookings, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip, itineraries, travelLink, selectedDay }),
+    [tasks, trips, events, cards, contacts, bookings, now, tz, travel.configured, categoryList, focusTrip, itineraries, travelLink, selectedDay],
   );
 
   const actions: Actions = useMemo(
@@ -462,6 +507,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       },
       openCard: (card, spend) => setCardSheet({ card, spend }),
       newCard: () => setCardSheet({ card: null }),
+      openBooking: (booking) => setBookingSheet({ booking }),
+      newBooking: (draft) => setBookingSheet({ booking: null, draft }),
       openContact: (contact) => setContactSheet({ contact }),
       newContact: () => setContactSheet({ contact: null }),
       logContact: logContactToday,
@@ -503,12 +550,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       return d == null || d <= 0;
     }).length,
     cards: cards.filter((c) => c.status === "active").length,
+    tracking: trackingCount(data),
   };
 
   function newForTab() {
     if (tab === "cards") actions.newCard();
     else if (tab === "events") actions.newEvent();
     else if (tab === "people") actions.newContact();
+    else if (tab === "tracking") actions.newBooking();
     else if (tab === "trips") actions.newTask({ category: "trip", tripId: focusTrip ?? trips[0]?.id });
     else actions.newTask();
   }
@@ -586,6 +635,18 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           )}
           {tab === "events" && <EventsView events={events} now={now} tz={tz} onOpen={actions.openEvent} onNew={() => actions.newEvent()} />}
           {tab === "trips" && <TripsView data={data} actions={actions} />}
+          {tab === "tracking" && (
+            <>
+              <section className="card-surface trk-card">
+                <h3>Tracking</h3>
+                <TrackingView data={data} actions={actions} />
+              </section>
+              <section className="card-surface trk-card">
+                <h3>Still to book</h3>
+                <ToBookView data={data} actions={actions} />
+              </section>
+            </>
+          )}
           {tab === "people" && (
             <ContactsView contacts={contacts} now={now} tz={tz} onOpen={actions.openContact} onLog={actions.logContact} onNew={actions.newContact} />
           )}
@@ -624,6 +685,17 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           onSpend={spendCard}
           onStatus={cardStatus}
           onDelete={removeCard}
+        />
+      )}
+
+      {bookingSheet && (
+        <BookingSheet
+          booking={bookingSheet.booking}
+          draft={bookingSheet.draft}
+          trips={trips}
+          onClose={() => setBookingSheet(null)}
+          onSave={saveBooking}
+          onDelete={removeBooking}
         />
       )}
 

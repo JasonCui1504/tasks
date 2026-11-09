@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { pushConfigured } from "@/lib/push";
-import { listContacts, listEvents, listGiftCards } from "@/lib/lists";
+import { listBookings, listContacts, listEvents, listGiftCards } from "@/lib/lists";
 import { getSettings, listTasks } from "@/lib/tasks";
 import { getTrips, travelConfigured, TRAVEL_URL } from "@/lib/travel";
 import Dashboard from "./Dashboard";
@@ -11,13 +11,14 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const user = await currentUser();
   if (!user) redirect("/login");
-  const [tasks, trips, settings, cards, events, contacts] = await Promise.all([
+  const [tasks, trips, settings, cards, events, contacts, bookings] = await Promise.all([
     listTasks(user),
     getTrips(),
     getSettings(user),
     listGiftCards(user),
     listEvents(user),
     listContacts(user),
+    listBookings(user),
   ]);
   return (
     <Dashboard
@@ -28,6 +29,7 @@ export default async function Home() {
       initialCards={cards}
       initialEvents={events}
       initialContacts={contacts}
+      initialBookings={bookings}
       vapidKey={pushConfigured() ? process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY! : null}
       travel={{ configured: travelConfigured(), url: TRAVEL_URL }}
     />

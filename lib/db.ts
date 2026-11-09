@@ -119,6 +119,30 @@ const SCHEMA = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS contact_log_contact ON contact_log(owner, contact_id, contact_on)`,
+  // Tracking: bookings entered by hand (flights, trains, rental cars, hotels…).
+  // Dates and times are the local wall-clock ones printed on the ticket.
+  `CREATE TABLE IF NOT EXISTS bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'flight',
+    name TEXT NOT NULL DEFAULT '',
+    number TEXT NOT NULL DEFAULT '',
+    from_place TEXT NOT NULL DEFAULT '',
+    to_place TEXT NOT NULL DEFAULT '',
+    start_date TEXT NOT NULL,
+    start_time TEXT NOT NULL DEFAULT '',
+    end_date TEXT,
+    end_time TEXT NOT NULL DEFAULT '',
+    confirmation TEXT NOT NULL DEFAULT '',
+    cancel_by TEXT,
+    status TEXT NOT NULL DEFAULT 'booked',
+    trip_id INTEGER,
+    cost REAL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS bookings_owner_start ON bookings(owner, start_date)`,
   // Signed in to travel.jascui.com to read trip itineraries: the travel app's
   // session token, plus the password encrypted with TASKS_SESSION_SECRET so the
   // session can be renewed when it expires (every 30 days). Deleted on Disconnect.

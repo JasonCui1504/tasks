@@ -12,6 +12,7 @@ import { CardsPanel, CategoryPanel, EventsPanel, PeoplePanel } from "./Panels";
 import type { Actions, Data } from "./shared";
 import { SummaryStats, TasksTab } from "./TasksTab";
 import { TodayList } from "./Today";
+import { ToBookView, TrackingView } from "./Tracking";
 import { TripsView } from "./Trips";
 import { UrgentCallout } from "./Urgent";
 
@@ -28,7 +29,7 @@ const MIN_W = 3;
 const MIN_H = 2;
 const STORE_KEY = "tasks.grid.v3";
 
-export type BoxView = "today" | "tasks" | "summary" | "urgent" | "calendar" | "day" | "events" | "trips" | "people" | "cards" | `cat:${string}`;
+export type BoxView = "today" | "tasks" | "summary" | "urgent" | "calendar" | "day" | "events" | "trips" | "tracking" | "tobook" | "people" | "cards" | `cat:${string}`;
 export type Box = { id: string; view: BoxView; x: number; y: number; w: number; h: number };
 
 const DEFAULT_LAYOUT: Box[] = [
@@ -52,6 +53,8 @@ const BASE_VIEWS: { view: BoxView; label: string }[] = [
   { view: "day", label: "Day view" },
   { view: "events", label: "Events" },
   { view: "trips", label: "Trips" },
+  { view: "tracking", label: "Tracking" },
+  { view: "tobook", label: "Still to book" },
   { view: "people", label: "Stay in touch" },
   { view: "cards", label: "Gift cards" },
 ];
@@ -337,6 +340,8 @@ function AddButton({ view, actions, data }: { view: BoxView; actions: Actions; d
     : view === "people" ? actions.newContact
     : view === "cards" ? actions.newCard
     : view === "trips" ? () => actions.newTask({ category: "trip" })
+    : view === "tracking" ? () => actions.newBooking()
+    : view === "tobook" ? () => actions.newBooking({ status: "to_book" })
     : view === "calendar" || view === "day" ? () => actions.newEvent(data.selectedDay)
     : view === "today" || view === "tasks" ? () => actions.newTask()
     : cat ? () => actions.newTask({ category: cat })
@@ -373,6 +378,10 @@ function BoxContent({ view, data, actions, px, hasDayView }: { view: BoxView; da
       );
     case "trips":
       return <TripsView data={data} actions={actions} compact={!roomy} />;
+    case "tracking":
+      return <TrackingView data={data} actions={actions} />;
+    case "tobook":
+      return <ToBookView data={data} actions={actions} />;
     case "people":
       return roomy ? (
         <ContactsView contacts={data.contacts} now={data.now} tz={data.tz} onOpen={actions.openContact} onLog={actions.logContact} onNew={actions.newContact} />
