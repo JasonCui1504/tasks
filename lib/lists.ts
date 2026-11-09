@@ -1,8 +1,8 @@
 import type { Row } from "@libsql/client";
 import { getDb } from "./db";
-import type { CalendarEvent, CalendarEventInput, Contact, ContactInput, ContactLog, GiftCard, GiftCardInput } from "./types";
+import { BOOKING_KINDS, type Booking, type BookingInput, type BookingKind, type CalendarEvent, CalendarEventInput, Contact, ContactInput, ContactLog, GiftCard, GiftCardInput } from "./types";
 
-// Gift cards, events and stay-in-touch contacts: the lists beside tasks. Same rules as lib/tasks.ts —
+// Gift cards, events, stay-in-touch contacts and tracked bookings: the lists beside tasks. Same rules as lib/tasks.ts —
 // everything is scoped to its owner, input is cleaned here, and a bad value
 // throws a message string the route turns into a 400.
 
@@ -387,4 +387,135 @@ export async function deleteContact(owner: string, id: number): Promise<void> {
     ],
     "write",
   );
+}
+
+// ---- tracking (bookings) ----
+
+function rowToBooking(r: Row): Booking {
+  return {
+    id: Number(r.id),
+    kind: String(r.kind) as BookingKind,
+    name: String(r.name ?? ""),
+    number: String(r.number ?? ""),
+    from: String(r.from_place ?? ""),
+    to: String(r.to_place ?? ""),
+    startDate: String(r.start_date),
+    startTime: String(r.start_time ?? ""),
+    endDate: str(r.end_date),
+    endTime: String(r.end_time ?? ""),
+    confirmation: String(r.confirmation ?? ""),
+    cancelBy: str(r.cancel_by),
+    status: String(r.status) === "to_book" ? "to_book" : "booked",
+    tripId: r.trip_id == null ? null : Number(r.trip_id),
+    cost: r.cost == null ? null : Number(r.cost),
+    notes: String(r.notes ?? ""),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
+function timeOrBlank(v: unknown): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(s)) throw "That time doesn't look right.";
+  return s;
+}
+
+const text = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
+
+export function cleanBookingInput(body: Record<string, unknown>, partial: boolean): BookingInput {
+  const out: BookingInput = {};
+  if ("kind" in body || !partial) {
+    const kind = String(body.kind ?? "flight");
+    if (!BOOKING_KINDS.some((k) => k.value === kind)) throw "Pick what kind of booking this is.";
+    out.kind = kind as BookingKind;
+  }
+  if ("name" in body) out.name = text(body.name, 120);
+  if ("number" in body) out.number = text(body.number, 60);
+  if ("from" in body) out.from = text(body.from, 200);
+  if ("to" in body) out.to = text(body.to, 200);
+  if ("startDate" in body || !partial) {
+    const d = dateKeyOrNull(body.startDate);
+    if (!d) throw "When is it?";
+    out.startDate = d;
+  }
+  if ("startTime" in body) out.startTime = timeOrBlank(body.startTime);
+  if ("endDate" in body) out.endDate = dateKeyOrNull(body.endDate);
+  if ("endTime" in body) out.endTime = timeOrBlank(body.endTime);
+  if ("confirmation" in body) out.confirmation = text(body.confirmation, 80);
+  if ("cancelBy" in body) out.cancelBy = dateKeyOrNull(body.cancelBy);
+  if ("status" in body) out.status = body.status === "to_book" ? "to_book" : "booked";
+  if ("tripId" in body) {
+    const n = Number(body.tripId);
+    out.tripId = body.tripId == null || body.tripId === "" || !Number.isInteger(n) || n <= 0 ? null : n;
+  }
+  if ("cost" in body) out.cost = moneyOrNull(body.cost);
+  if ("notes" in body) out.notes = String(body.notes ?? "").slice(0, 5000);
+  if (!partial && !out.name && !out.number && !out.from) throw "Add a name, number or place so you can tell it apart.";
+  if (out.startDate && out.endDate && out.endDate < out.startDate) throw "It can't end before it starts.";
+  return out;
+}
+
+const BOOKING_COLUMNS: Record<keyof BookingInput, string> = {
+  kind: "kind",
+  name: "name",
+  number: "number",
+  from: "from_place",
+  to: "to_place",
+  startDate: "start_date",
+  startTime: "start_time",
+  endDate: "end_date",
+  endTime: "end_time",
+  confirmation: "confirmation",
+  cancelBy: "cancel_by",
+  status: "status",
+  tripId: "trip_id",
+  cost: "cost",
+  notes: "notes",
+};
+
+/** Bookings that haven't ended more than 30 days ago, soonest first. */
+export async function listBookings(owner: string): Promise<Booking[]> {
+  const db = await getDb();
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const rs = await db.execute({
+    sql: `SELECT * FROM bookings WHERE owner = ? AND COALESCE(end_date, start_date) >= ?
+          ORDER BY start_date, start_time, id`,
+    args: [owner, since],
+  });
+  return rs.rows.map(rowToBooking);
+}
+
+export async function getBooking(owner: string, id: number): Promise<Booking | null> {
+  const db = await getDb();
+  const rs = await db.execute({ sql: "SELECT * FROM bookings WHERE owner = ? AND id = ?", args: [owner, id] });
+  return rs.rows.length ? rowToBooking(rs.rows[0]) : null;
+}
+
+export async function createBooking(owner: string, input: BookingInput): Promise<Booking> {
+  const db = await getDb();
+  const keys = Object.keys(input) as (keyof BookingInput)[];
+  const now = nowIso();
+  const rs = await db.execute({
+    sql: `INSERT INTO bookings (owner, ${keys.map((k) => BOOKING_COLUMNS[k]).join(", ")}, created_at, updated_at)
+          VALUES (?, ${keys.map(() => "?").join(", ")}, ?, ?) RETURNING *`,
+    args: [owner, ...keys.map((k) => input[k] ?? null), now, now],
+  });
+  return rowToBooking(rs.rows[0]);
+}
+
+export async function updateBooking(owner: string, id: number, input: BookingInput): Promise<Booking | null> {
+  const keys = Object.keys(input) as (keyof BookingInput)[];
+  if (!keys.length) return getBooking(owner, id);
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: `UPDATE bookings SET ${keys.map((k) => `${BOOKING_COLUMNS[k]} = ?`).join(", ")}, updated_at = ? WHERE owner = ? AND id = ? RETURNING *`,
+    args: [...keys.map((k) => input[k] ?? null), nowIso(), owner, id],
+  });
+  return rs.rows.length ? rowToBooking(rs.rows[0]) : null;
+}
+
+export async function deleteBooking(owner: string, id: number): Promise<void> {
+  const db = await getDb();
+  await db.execute({ sql: "DELETE FROM bookings WHERE owner = ? AND id = ?", args: [owner, id] });
 }

@@ -340,6 +340,8 @@ function AddButton({ view, actions, data }: { view: BoxView; actions: Actions; d
     : view === "people" ? actions.newContact
     : view === "cards" ? actions.newCard
     : view === "trips" ? () => actions.newTask({ category: "trip" })
+    : view === "tracking" ? () => actions.newBooking()
+    : view === "tobook" ? () => actions.newBooking({ status: "to_book" })
     : view === "calendar" || view === "day" ? () => actions.newEvent(data.selectedDay)
     : view === "today" || view === "tasks" ? () => actions.newTask()
     : cat ? () => actions.newTask({ category: cat })

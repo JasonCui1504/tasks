@@ -251,3 +251,54 @@ export type TripItinerary = {
   /** Set when the link stopped working (e.g. it was changed on the travel app). */
   error?: string;
 };
+
+// ---- tracking: bookings you enter yourself (flights, trains, cars, hotels…) ----
+
+export type BookingKind = "flight" | "train" | "bus" | "car" | "hotel" | "other";
+
+export const BOOKING_KINDS: { value: BookingKind; label: string; name: string; number: string; from: string; to: string; start: string; end: string }[] = [
+  { value: "flight", label: "Flight", name: "Airline", number: "Flight number", from: "From (airport)", to: "To (airport)", start: "Departs", end: "Arrives" },
+  { value: "train", label: "Train", name: "Train / operator", number: "Train number", from: "From (station)", to: "To (station)", start: "Departs", end: "Arrives" },
+  { value: "bus", label: "Bus / ferry", name: "Company", number: "Route or number", from: "From", to: "To", start: "Departs", end: "Arrives" },
+  { value: "car", label: "Rental car", name: "Rental company", number: "Car / class", from: "Pick-up location", to: "Drop-off location", start: "Pick up", end: "Drop off" },
+  { value: "hotel", label: "Hotel", name: "Hotel / stay", number: "Room", from: "Address", to: "", start: "Check in", end: "Check out" },
+  { value: "other", label: "Other", name: "What", number: "Reference", from: "Where", to: "", start: "Starts", end: "Ends" },
+];
+
+export function bookingKind(k: string) {
+  return BOOKING_KINDS.find((b) => b.value === k) ?? BOOKING_KINDS[BOOKING_KINDS.length - 1];
+}
+
+export type Booking = {
+  id: number;
+  kind: BookingKind;
+  /** Airline, train operator, rental company, hotel name… */
+  name: string;
+  /** Flight or train number, room, reference. */
+  number: string;
+  from: string;
+  to: string;
+  /** Local wall-clock date/time as on the ticket: "YYYY-MM-DD" and "HH:MM" (or ""). */
+  startDate: string;
+  startTime: string;
+  endDate: string | null;
+  endTime: string;
+  confirmation: string;
+  /** Last day to cancel for free, "YYYY-MM-DD". */
+  cancelBy: string | null;
+  /** "booked", or "to_book" (shows under Still to book). */
+  status: "booked" | "to_book";
+  /** A trip on travel.jascui.com this belongs to. */
+  tripId: number | null;
+  cost: number | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookingInput = Partial<
+  Pick<Booking, "kind" | "name" | "number" | "from" | "to" | "startDate" | "startTime" | "endDate" | "endTime" | "confirmation" | "cancelBy" | "status" | "tripId" | "cost" | "notes">
+>;
+
+/** Days before a free-cancellation deadline to send a heads-up. */
+export const CANCEL_ALERT_DAYS = [7, 2, 0];

@@ -2338,11 +2338,28 @@ button.info-tile:hover {
   text-decoration: underline;
   text-decoration-color: var(--line);
 }
-.trk-icon {
+.trk-tag {
   flex: none;
-  width: 22px;
-  text-align: center;
-  font-size: 16px;
+  width: 64px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 1.2;
+}
+.trk-tag.deadline {
+  color: var(--u2);
+}
+.trk-view {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.trk-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .trk-main {
   flex: 1;
