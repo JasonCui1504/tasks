@@ -1,40 +1,23 @@
 :root {
-  --bg: #f6f6f3;
-  --surface: #ffffff;
-  --surface-2: #efefeb;
-  --text: #191917;
-  --muted: #74746e;
-  --line: #e6e6e1;
-  --accent: #191917;
-  --accent-text: #ffffff;
-  --u0: #a3a39c;
-  --u1: #4f6bed;
-  --u2: #e0870f;
-  --u3: #e5484d;
-  --danger: #d93a3f;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  /* The palette of jascui.com and travel.jascui.com: always dark, forest green accent. */
+  --bg: #0d1110;
+  --surface: #141c17;
+  --surface-2: #1c2820;
+  --text: #deeade;
+  --subtle: #b0c8b8;
+  --muted: #8aa498;
+  --line: #243028;
+  --accent: #4a7c59;
+  --accent-dim: #2d4a3e;
+  --accent-text: #f2f7f2;
+  --u0: #6f877b;
+  --u1: #7d93ff;
+  --u2: #f0a440;
+  --u3: #ff6b6f;
+  --danger: #ff6b6f;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
   --radius: 14px;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111110;
-    --surface: #1b1b19;
-    --surface-2: #252522;
-    --text: #ededea;
-    --muted: #96968f;
-    --line: #2c2c29;
-    --accent: #ededea;
-    --accent-text: #111110;
-    --u0: #75756f;
-    --u1: #7d93ff;
-    --u2: #f0a440;
-    --u3: #ff6b6f;
-    --danger: #ff6b6f;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
-    color-scheme: dark;
-  }
+  color-scheme: dark;
 }
 
 * {
@@ -46,7 +29,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.45 var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -91,7 +74,7 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--muted);
+  border-color: var(--accent);
 }
 
 input[type="checkbox"] {
@@ -176,7 +159,7 @@ a {
   text-decoration: none;
 }
 .link:hover {
-  color: var(--text);
+  color: var(--subtle);
 }
 .link.strong {
   color: var(--text);
@@ -237,7 +220,8 @@ a {
   transition: border-color 0.15s;
 }
 .stat.active {
-  border-color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface-2);
 }
 .stat-value {
   font-size: 24px;
@@ -374,9 +358,8 @@ a {
   gap: 6px;
 }
 .seg button.on {
-  background: var(--surface);
+  background: var(--accent-dim);
   color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .seg.full {
   display: grid;
@@ -432,7 +415,7 @@ a {
   gap: 8px;
 }
 .trip.focused {
-  border-color: #0f9d8a;
+  border-color: var(--accent);
 }
 .trip-main {
   display: grid;
@@ -442,7 +425,7 @@ a {
 .trip-when {
   font-size: 12px;
   font-weight: 600;
-  color: #0f9d8a;
+  color: #7fb894;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -530,9 +513,9 @@ a {
   color: var(--muted);
 }
 .task.done .check {
-  background: var(--u0);
-  border-color: var(--u0);
-  color: var(--surface);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 .task.done .task-title {
   text-decoration: line-through;
@@ -604,7 +587,7 @@ a {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -721,6 +704,7 @@ a {
   gap: 2px;
 }
 .history a {
+  border: 1px solid var(--line);
   display: grid;
   gap: 1px;
   padding: 10px 12px;
@@ -730,12 +714,13 @@ a {
 }
 
 .toast {
+  border: 1px solid var(--line);
   position: fixed;
   left: 50%;
   bottom: calc(env(safe-area-inset-bottom) + 20px);
   transform: translateX(-50%);
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--surface-2);
+  color: var(--text);
   padding: 10px 16px;
   border-radius: 999px;
   display: flex;
@@ -749,7 +734,7 @@ a {
 }
 .toast button {
   font-weight: 600;
-  color: inherit;
+  color: #7fb894;
   text-decoration: underline;
 }
 
