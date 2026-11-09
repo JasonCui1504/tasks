@@ -2306,3 +2306,77 @@ button.info-tile:hover {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* ---------- tracking / still to book ---------- */
+
+.trk {
+  display: grid;
+  gap: 14px;
+}
+.trk-trip {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  margin: 0 2px 2px;
+}
+.trk-trip:hover {
+  color: var(--text);
+}
+.trk-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 2px;
+  text-align: left;
+}
+.trk-row:hover .trk-title {
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+}
+.trk-icon {
+  flex: none;
+  width: 22px;
+  text-align: center;
+  font-size: 16px;
+}
+.trk-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.trk-title {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.trk-sub {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trk-when {
+  flex: none;
+  display: grid;
+  justify-items: end;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.trk-rel {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.trk-card {
+  margin-top: 12px;
+}
+.trk-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}

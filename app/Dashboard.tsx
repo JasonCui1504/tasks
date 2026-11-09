@@ -24,6 +24,7 @@ import { EventSheet, EventsView } from "./Events";
 import { GiftCardSheet, GiftCardsView } from "./GiftCards";
 import TaskSheet from "./TaskSheet";
 import SettingsSheet from "./SettingsSheet";
+import { ToBookView, TrackingView } from "./Tracking";
 import { TripsView } from "./Trips";
 import { UrgentCallout } from "./Urgent";
 import { GridWorkspace } from "./Grid";
@@ -585,7 +586,23 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
             </>
           )}
           {tab === "events" && <EventsView events={events} now={now} tz={tz} onOpen={actions.openEvent} onNew={() => actions.newEvent()} />}
-          {tab === "trips" && <TripsView data={data} actions={actions} />}
+          {tab === "trips" && (
+            <>
+              <TripsView data={data} actions={actions} />
+              {data.travelLink.connected && !data.travelLink.error && (
+                <>
+                  <section className="card-surface trk-card">
+                    <h3>Tracking</h3>
+                    <TrackingView data={data} actions={actions} />
+                  </section>
+                  <section className="card-surface trk-card">
+                    <h3>Still to book</h3>
+                    <ToBookView data={data} actions={actions} />
+                  </section>
+                </>
+              )}
+            </>
+          )}
           {tab === "people" && (
             <ContactsView contacts={contacts} now={now} tz={tz} onOpen={actions.openContact} onLog={actions.logContact} onNew={actions.newContact} />
           )}
