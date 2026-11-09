@@ -1,0 +1,22 @@
+# Sends due reminders. GitHub runs this every ~10 minutes (scheduled runs can
+# lag by a few minutes at busy times). It calls the app's /api/cron with the
+# CRON_SECRET repository secret, which must match CRON_SECRET in Vercel.
+name: Send reminders
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/cron
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TASKS_URL: ${{ vars.TASKS_URL || 'https://tasks.jascui.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET secret isn't set"; exit 1; fi
+          curl -fsS --retry 2 --max-time 60 -H "Authorization: Bearer $CRON_SECRET" "$TASKS_URL/api/cron"

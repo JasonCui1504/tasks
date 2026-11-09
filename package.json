@@ -1,0 +1,28 @@
+{
+  "name": "tasks",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "vapid": "node scripts/vapid.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "next": "^16.4.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/web-push": "^3.6.4",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.3",
+    "typescript": "^6.0.3"
+  }
+}
