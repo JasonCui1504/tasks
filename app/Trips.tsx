@@ -27,7 +27,7 @@ export function TripsView({ data, actions, compact, focus }: { data: Data; actio
   return (
     <div className={compact ? "trip-stack compact" : "trip-stack"}>
       {data.trips.map((trip) => (
-        <TripCard key={trip.id} trip={trip} today={today} data={data} actions={actions} compact={compact} focused={focus === trip.id} />
+        <TripCard key={trip.id} trip={trip} today={today} data={data} actions={actions} compact={compact} focused={(focus ?? data.focusTrip) === trip.id} />
       ))}
     </div>
   );
@@ -47,7 +47,7 @@ function TripCard({ trip, today, data, actions, compact, focused }: { trip: Trip
   }
 
   return (
-    <article className={`trip-card ${focused ? "focused" : ""}`} id={compact ? undefined : `trip-${trip.id}`}>
+    <article className={`trip-card ${focused ? "focused" : ""}`}>
       <header className="trip-card-head">
         <div>
           <span className="trip-when">{countdown(trip, today)}</span>

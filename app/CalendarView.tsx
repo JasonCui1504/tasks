@@ -179,7 +179,6 @@ export function CalendarView({ data, actions, mini }: { data: Data; actions: Act
                 <span className="cal-entries">
                   {list.slice(0, 3).map((e) => (
                     <span key={e.key} className={`cal-entry ${e.kind}`} style={{ "--c": e.color } as React.CSSProperties}>
-                      {e.time && <span className="cal-entry-time">{e.time.replace(":00", "").replace(" ", "").toLowerCase()}</span>}
                       {e.title}
                     </span>
                   ))}

@@ -99,7 +99,7 @@ export function urgentItems(d: Data, a: Actions): Item[] {
   return items.filter((i) => (seen.has(i.key) ? false : (seen.add(i.key), true)));
 }
 
-export function UrgentCallout({ data, actions }: { data: Data; actions: Actions }) {
+export function UrgentCallout({ data, actions, bare }: { data: Data; actions: Actions; bare?: boolean }) {
   const [all, setAll] = useState(false);
   // Fewer lines on a phone so the list below stays in view.
   const [show, setShow] = useState(6);
@@ -111,7 +111,7 @@ export function UrgentCallout({ data, actions }: { data: Data; actions: Actions 
 
   if (!items.length) {
     return (
-      <section className="callout calm" aria-label="Urgent">
+      <section className={`callout calm ${bare ? "bare" : ""}`} aria-label="Urgent">
         <span className="callout-dot" aria-hidden />
         <div>
           <p className="callout-title">All good</p>
@@ -123,7 +123,7 @@ export function UrgentCallout({ data, actions }: { data: Data; actions: Actions 
 
   const shown = all ? items : items.slice(0, show);
   return (
-    <section className="callout urgent" aria-label="Urgent">
+    <section className={`callout urgent ${bare ? "bare" : ""}`} aria-label="Urgent">
       <div className="callout-head">
         <p className="callout-title">
           Urgent — need to do <span className="callout-count">{items.length}</span>

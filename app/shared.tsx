@@ -16,7 +16,7 @@ import {
   type Trip,
 } from "@/lib/types";
 
-export type Tab = "tasks" | "calendar" | "events" | "trips" | "people" | "cards";
+export type Tab = "today" | "tasks" | "calendar" | "events" | "trips" | "people" | "cards";
 
 export type Bucket = "overdue" | "today" | "tomorrow" | "week" | "later" | "none";
 
@@ -65,6 +65,8 @@ export type Data = {
   travelConfigured: boolean;
   /** Task categories in display order (built-in, then custom ones in use). */
   categories: string[];
+  /** A trip to highlight (from a notification or the urgent box). */
+  focusTrip: number | null;
 };
 
 /** Everything a view can do. Edits open the same sheets wherever they start. */

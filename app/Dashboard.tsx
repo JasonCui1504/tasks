@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { daysBetween, formatDateKey, formatDue, localDateKey, money, monthlyCost } from "@/lib/time";
+import { daysBetween, formatDateKey, formatDue, localDateKey, money } from "@/lib/time";
 import {
   CATEGORIES,
-  URGENCIES,
-  categoryInfo,
   contactDueOn,
   type CalendarEvent,
   type CalendarEventInput,
@@ -27,9 +25,11 @@ import TaskSheet from "./TaskSheet";
 import SettingsSheet from "./SettingsSheet";
 import { TripsView } from "./Trips";
 import { UrgentCallout } from "./Urgent";
-import { SideColumn } from "./Workspace";
+import { GridWorkspace } from "./Grid";
+import { TasksTab, taskCounts } from "./TasksTab";
+import { TodayList } from "./Today";
 import { registerWorker, setBadge } from "./push-client";
-import { BUCKET_LABELS, BUCKET_ORDER, Chip, Stat, TaskRow, bucketOf, byDue, type Actions, type Data, type Tab } from "./shared";
+import { bucketOf, type Actions, type Data, type Tab } from "./shared";
 
 type Props = {
   user: string;
@@ -43,8 +43,10 @@ type Props = {
   travel: { configured: boolean; url: string };
 };
 
+// The phone view: a fixed set of tabs, today's to-do list first.
 const TABS: { id: Tab; label: string }[] = [
-  { id: "tasks", label: "Tasks" },
+  { id: "today", label: "Today" },
+  { id: "tasks", label: "All tasks" },
   { id: "calendar", label: "Calendar" },
   { id: "events", label: "Events" },
   { id: "trips", label: "Trips" },
@@ -53,14 +55,12 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 const TAB_KEY = "tasks.tab";
 
-type When = "all" | "overdue" | "today" | "week";
-
 const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 type TaskSheetState = { task: Task | null; draft?: TaskInput };
 
 export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, vapidKey, travel }: Props) {
-  const [tab, setTabState] = useState<Tab>("tasks");
+  const [tab, setTabState] = useState<Tab>("today");
   const [tasks, setTasks] = useState(initialTasks);
   const [trips, setTrips] = useState(initialTrips);
   const [events, setEvents] = useState(initialEvents);
@@ -166,8 +166,11 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
 
   // Bring a focused trip into view once its tab is showing.
   useEffect(() => {
-    if (tab !== "trips" || focusTrip == null) return;
-    requestAnimationFrame(() => document.getElementById(`trip-${focusTrip}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    if (focusTrip == null) return;
+    requestAnimationFrame(() => {
+      const card = [...document.querySelectorAll<HTMLElement>(".trip-card.focused")].find((el) => el.offsetParent !== null);
+      card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   }, [tab, focusTrip]);
 
   useEffect(() => {
@@ -404,8 +407,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // ---- what every view gets ----
 
   const data: Data = useMemo(
-    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList }),
-    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList],
+    () => ({ tasks, trips, events, cards, contacts, now, tz, travelConfigured: travel.configured, categories: categoryList, focusTrip }),
+    [tasks, trips, events, cards, contacts, now, tz, travel.configured, categoryList, focusTrip],
   );
 
   const actions: Actions = useMemo(
@@ -432,18 +435,10 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // ---- tab counts ----
 
   const today = localDateKey(now, tz);
-  const counts = useMemo(() => {
-    const c = { overdue: 0, today: 0, week: 0 };
-    for (const t of open) {
-      const b = bucketOf(t, now, tz);
-      if (b === "overdue") c.overdue++;
-      else if (b === "today") c.today++;
-      else if (b === "tomorrow" || b === "week") c.week++;
-    }
-    return c;
-  }, [open, now, tz]);
+  const counts = useMemo(() => taskCounts(data), [data]);
   const tabCount: Record<Tab, number> = {
-    tasks: counts.overdue + counts.today,
+    today: counts.overdue + counts.today,
+    tasks: 0,
     calendar: 0,
     events: events.filter((e) => {
       const d = daysBetween(today, localDateKey(new Date(e.startsAt), tz));
@@ -467,55 +462,76 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
 
   const dateLine = new Date(now).toLocaleDateString("en-US", { timeZone: tz, weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
+  const topActions = (
+    <>
+      <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Notifications and settings">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
+          <path d="M18 16v-5a6 6 0 10-12 0v5l-2 2h16l-2-2zM10 20a2 2 0 004 0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </>
+  );
+
   return (
-    <div className="workspace">
-      <header className="topbar">
-        <div className="brand">
-          <h1>Workspace</h1>
-          <p className="muted small">{dateLine}</p>
-        </div>
-        <div className="top-actions">
-          <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Notifications and settings">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
-              <path d="M18 16v-5a6 6 0 10-12 0v5l-2 2h16l-2-2zM10 20a2 2 0 004 0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button className="btn primary" onClick={newForTab}>
-            <span aria-hidden>+</span> New
-          </button>
-        </div>
-      </header>
+    <>
+      {/* Computer: the grid workspace. */}
+      <div className="desktop-only">
+        <GridWorkspace
+          data={data}
+          actions={actions}
+          onToast={(text) => setToast({ text })}
+          dateLine={dateLine}
+          topActions={
+            <>
+              {topActions}
+              <button className="btn primary" onClick={() => actions.newTask()}>
+                <span aria-hidden>+</span> New task
+              </button>
+            </>
+          }
+        />
+      </div>
 
-      <nav className="tabs" role="tablist" aria-label="Views">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
-            {t.label}
-            {tabCount[t.id] > 0 && <span className={`tab-count ${t.id === "tasks" && counts.overdue ? "alert" : ""}`}>{tabCount[t.id]}</span>}
-          </button>
-        ))}
-      </nav>
+      {/* Phone: a set view — today's to-do list first, then a tab for everything else. */}
+      <div className="workspace mobile-only">
+        <header className="topbar">
+          <div className="brand">
+            <h1>{TABS.find((t) => t.id === tab)!.label}</h1>
+            <p className="muted small">{dateLine}</p>
+          </div>
+          <div className="top-actions">
+            {topActions}
+            <button className="btn primary" onClick={newForTab}>
+              <span aria-hidden>+</span> New
+            </button>
+          </div>
+        </header>
 
-      <div className="ws-grid">
-        <SideColumn side="left" data={data} actions={actions} />
+        <nav className="tabs" role="tablist" aria-label="Views">
+          {TABS.map((t) => (
+            <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+              {t.label}
+              {tabCount[t.id] > 0 && <span className={`tab-count ${t.id === "today" && counts.overdue ? "alert" : ""}`}>{tabCount[t.id]}</span>}
+            </button>
+          ))}
+        </nav>
 
         <main className="ws-main">
           <UrgentCallout data={data} actions={actions} />
-
-          {tab === "tasks" && <TasksTab data={data} actions={actions} counts={counts} />}
+          {tab === "today" && <TodayList data={data} actions={actions} />}
+          {tab === "tasks" && <TasksTab data={data} actions={actions} />}
           {tab === "calendar" && (
             <section className="card-surface">
               <CalendarView data={data} actions={actions} />
             </section>
           )}
           {tab === "events" && <EventsView events={events} now={now} tz={tz} onOpen={actions.openEvent} onNew={() => actions.newEvent()} />}
-          {tab === "trips" && <TripsView data={data} actions={actions} focus={focusTrip} />}
+          {tab === "trips" && <TripsView data={data} actions={actions} />}
           {tab === "people" && (
             <ContactsView contacts={contacts} now={now} tz={tz} onOpen={actions.openContact} onLog={actions.logContact} onNew={actions.newContact} />
           )}
           {tab === "cards" && <GiftCardsView cards={cards} now={now} tz={tz} onOpen={actions.openCard} onNew={actions.newCard} />}
         </main>
-
-        <SideColumn side="right" data={data} actions={actions} />
       </div>
 
       {editing && (
@@ -576,177 +592,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           {toast.undo && <button onClick={toast.undo}>Undo</button>}
         </div>
       )}
-    </div>
-  );
-}
-
-// ---- the Tasks tab ----
-
-function TasksTab({ data, actions, counts }: { data: Data; actions: Actions; counts: { overdue: number; today: number; week: number } }) {
-  const { tasks, now, tz, trips, events, categories } = data;
-  const [category, setCategory] = useState<string>("all");
-  const [when, setWhen] = useState<When>("all");
-  const [minUrgency, setMinUrgency] = useState(0);
-  const [sort, setSort] = useState<"due" | "urgency">("due");
-  const [showDone, setShowDone] = useState(false);
-  const [quick, setQuick] = useState("");
-
-  const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
-
-  const categoryCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const t of open) m.set(t.category, (m.get(t.category) ?? 0) + 1);
-    return m;
-  }, [open]);
-
-  const visible = useMemo(() => {
-    const pool = showDone ? tasks.filter((t) => t.status === "done") : open;
-    return pool.filter((t) => {
-      if (category !== "all" && t.category !== category && !(category === "trip" && t.tripId != null)) return false;
-      if (t.urgency < minUrgency) return false;
-      if (!showDone && when !== "all") {
-        const b = bucketOf(t, now, tz);
-        if (when === "overdue" && b !== "overdue") return false;
-        if (when === "today" && b !== "today" && b !== "overdue") return false;
-        if (when === "week" && !["overdue", "today", "tomorrow", "week"].includes(b)) return false;
-      }
-      return true;
-    });
-  }, [tasks, open, showDone, category, minUrgency, when, now, tz]);
-
-  const groups = useMemo(() => {
-    if (showDone) {
-      const done = [...visible].sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
-      return done.length ? [{ key: "done", label: "Completed in the last 30 days", items: done }] : [];
-    }
-    if (sort === "urgency") {
-      return [...URGENCIES]
-        .reverse()
-        .map((u) => ({ key: `u${u.value}`, label: u.label, items: visible.filter((t) => t.urgency === u.value).sort(byDue) }))
-        .filter((g) => g.items.length);
-    }
-    return BUCKET_ORDER.map((b) => ({
-      key: b,
-      label: BUCKET_LABELS[b],
-      items: visible.filter((t) => bucketOf(t, now, tz) === b).sort((a, c) => (b === "none" ? c.urgency - a.urgency || a.id - c.id : byDue(a, c))),
-    })).filter((g) => g.items.length);
-  }, [visible, sort, showDone, now, tz]);
-
-  const recurring = useMemo(() => {
-    if (category !== "subscription" && category !== "payment") return null;
-    const items = open.filter((t) => t.category === category && t.repeat !== "none" && t.amount != null);
-    if (!items.length) return null;
-    const perMonth = items.reduce((s, t) => s + monthlyCost(t.amount!, t.repeat, t.repeatEvery), 0);
-    return { perMonth, count: items.length };
-  }, [open, category]);
-
-  // The soonest event still ahead (or happening today).
-  const today = localDateKey(now, tz);
-  const nextEvent = events.find((e) => (e.allDay ? localDateKey(new Date(e.startsAt), tz) >= today : Date.parse(e.startsAt) > now.getTime()));
-  const nextEventDays = nextEvent ? daysBetween(today, localDateKey(new Date(nextEvent.startsAt), tz)) : null;
-
-  async function quickAdd(e: React.FormEvent) {
-    e.preventDefault();
-    const title = quick.trim();
-    if (!title) return;
-    setQuick("");
-    await actions.addTask({ title, category: category === "all" ? "personal" : category });
-  }
-
-  const filtering = category !== "all" || when !== "all" || minUrgency > 0;
-
-  return (
-    <>
-      <section className="stats" aria-label="Summary">
-        <Stat label="Overdue" value={counts.overdue} tone={counts.overdue ? "critical" : undefined} active={when === "overdue"} onClick={() => setWhen(when === "overdue" ? "all" : "overdue")} />
-        <Stat label="Today" value={counts.today} active={when === "today"} onClick={() => setWhen(when === "today" ? "all" : "today")} />
-        <Stat label="Next 7 days" value={counts.week} active={when === "week"} onClick={() => setWhen(when === "week" ? "all" : "week")} />
-        <Stat
-          label={nextEvent ? `Until ${nextEvent.title}` : "Next event"}
-          value={nextEventDays == null ? "—" : nextEventDays === 0 ? "Today" : `${nextEventDays}d`}
-          onClick={() => actions.goTab("events")}
-        />
-      </section>
-
-      <form className="quick" onSubmit={quickAdd}>
-        <input
-          value={quick}
-          onChange={(e) => setQuick(e.target.value)}
-          placeholder={`Add a task${category !== "all" ? ` to ${categoryInfo(category).label}` : ""}…`}
-          aria-label="Quick add a task"
-          enterKeyHint="done"
-        />
-        {quick.trim() && (
-          <button type="button" className="link" onClick={() => { actions.newTask({ title: quick.trim(), category: category === "all" ? undefined : category }); setQuick(""); }}>
-            Details
-          </button>
-        )}
-      </form>
-
-      <nav className="chips" aria-label="Categories">
-        <Chip active={category === "all"} onClick={() => setCategory("all")} label="All" count={open.length} />
-        {categories.map((id) => {
-          const info = categoryInfo(id);
-          const n = categoryCounts.get(id) ?? 0;
-          if (!n && category !== id && !["work", "trip", "subscription", "payment", "personal"].includes(id)) return null;
-          return <Chip key={id} active={category === id} color={info.color} onClick={() => setCategory(category === id ? "all" : id)} label={info.label} count={n} />;
-        })}
-      </nav>
-
-      <div className="toolbar">
-        <div className="seg" role="group" aria-label="Sort">
-          <button className={sort === "due" ? "on" : ""} onClick={() => setSort("due")}>By date</button>
-          <button className={sort === "urgency" ? "on" : ""} onClick={() => setSort("urgency")}>By urgency</button>
-        </div>
-        <select value={minUrgency} onChange={(e) => setMinUrgency(Number(e.target.value))} aria-label="Minimum urgency">
-          <option value={0}>Any urgency</option>
-          <option value={2}>High &amp; critical</option>
-          <option value={3}>Critical only</option>
-        </select>
-        <label className="toggle">
-          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Done
-        </label>
-        {filtering && (
-          <button className="link" onClick={() => { setCategory("all"); setWhen("all"); setMinUrgency(0); }}>
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {recurring && (
-        <p className="recurring">
-          {recurring.count} recurring {category === "subscription" ? "subscriptions" : "payments"} ≈ <strong>{money(recurring.perMonth)}</strong>/month · {money(recurring.perMonth * 12)}/year
-        </p>
-      )}
-
-      <div className="list">
-        {groups.length === 0 && (
-          <div className="empty">
-            <p>{showDone ? "Nothing completed recently." : filtering ? "Nothing matches these filters." : "All clear. Nothing outstanding."}</p>
-            {!showDone && <button className="btn" onClick={() => actions.newTask()}>Add a task</button>}
-          </div>
-        )}
-        {groups.map((g) => (
-          <section key={g.key} className="group">
-            <h2 className={g.key === "overdue" ? "danger" : ""}>
-              {g.label} <span className="muted">{g.items.length}</span>
-            </h2>
-            <ul>
-              {g.items.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  now={now}
-                  tz={tz}
-                  trip={t.tripId != null ? trips.find((x) => x.id === t.tripId) : undefined}
-                  onToggle={() => actions.toggleTask(t)}
-                  onOpen={() => actions.openTask(t)}
-                />
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
     </>
   );
 }
+
