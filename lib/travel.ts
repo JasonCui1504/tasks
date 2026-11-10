@@ -5,7 +5,7 @@ import type { Trip } from "./types";
 // shared TRAVEL_FEED_SECRET. Nothing is ever written back to the travel app.
 
 const TRAVEL_ORIGIN = (process.env.TRAVEL_ORIGIN || "https://travel.jascui.com").replace(/\/$/, "");
-const TTL_MS = 5 * 60_000;
+const TTL_MS = 60_000;
 
 let cache: { at: number; trips: Trip[] } | null = null;
 

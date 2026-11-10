@@ -248,10 +248,26 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
     save([...layout, box]);
   }
 
-  const viewOptions = useMemo(
-    () => [...BASE_VIEWS, ...data.categories.map((c) => ({ view: `cat:${c}` as BoxView, label: c === "trip" ? "Trip prep tasks" : categoryInfo(c).label }))],
-    [data.categories],
-  );
+  // The box menus, grouped under headings so a view is easy to find.
+  const viewGroups = useMemo(() => {
+    const base = (views: BoxView[]) => views.map((v) => BASE_VIEWS.find((b) => b.view === v)!);
+    const cats = data.categories.filter((c) => c !== "trip").map((c) => ({ view: `cat:${c}` as BoxView, label: categoryInfo(c).label }));
+    const tripPrep = data.categories.includes("trip") ? [{ view: "cat:trip" as BoxView, label: "Trip prep tasks" }] : [];
+    return [
+      { label: "Tasks", options: base(["today", "tasks", "urgent", "summary"]) },
+      { label: "Task categories", options: cats },
+      { label: "Calendar", options: base(["calendar", "day", "events"]) },
+      { label: "Travel", options: [...base(["trips", "tracking", "tobook", "packing"]), ...tripPrep] },
+      { label: "People & money", options: base(["people", "cards"]) },
+    ].filter((g) => g.options.length > 0);
+  }, [data.categories]);
+  const viewMenu = viewGroups.map((g) => (
+    <optgroup key={g.label} label={g.label}>
+      {g.options.map((o) => (
+        <option key={o.view} value={o.view}>{o.label}</option>
+      ))}
+    </optgroup>
+  ));
 
   const hasDayView = layout.some((b) => b.view === "day");
 
@@ -271,9 +287,7 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
             + Add box
             <select value="" onChange={(e) => e.target.value && addBox(e.target.value as BoxView)} aria-label="Add a box">
               <option value="">Add a box showing…</option>
-              {viewOptions.map((o) => (
-                <option key={o.view} value={o.view}>{o.label}</option>
-              ))}
+              {viewMenu}
             </select>
           </label>
           <button className="btn" onClick={() => confirm("Reset the workspace to the default layout?") && save(DEFAULT_LAYOUT)}>
@@ -300,16 +314,18 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
                   <header className="box-head" onPointerDown={(e) => startDrag(e, box, "move")}>
                     <span className="grip" aria-hidden>⠿</span>
                     {box.view.startsWith("cat:") && <span className="dot" style={{ background: categoryInfo(box.view.slice(4)).color }} />}
-                    <select
-                      className="panel-select"
-                      value={box.view}
-                      onChange={(e) => save(layout.map((b) => (b.id === box.id ? { ...b, view: e.target.value as BoxView } : b)))}
-                      aria-label="What this box shows"
-                    >
-                      {viewOptions.map((o) => (
-                        <option key={o.view} value={o.view}>{o.label}</option>
-                      ))}
-                    </select>
+                    {/* The title is drawn by the span; the invisible select on top opens a plain-case, grouped menu. */}
+                    <label className="panel-pick">
+                      <span className="panel-pick-label">{box.view === "cat:trip" ? "Trip prep tasks" : viewLabel(box.view)}</span>
+                      <select
+                        className="panel-select"
+                        value={box.view}
+                        onChange={(e) => save(layout.map((b) => (b.id === box.id ? { ...b, view: e.target.value as BoxView } : b)))}
+                        aria-label="What this box shows"
+                      >
+                        {viewMenu}
+                      </select>
+                    </label>
                     <div className="panel-tools">
                       <AddButton view={box.view} actions={actions} data={data} />
                       <button className="panel-btn" onClick={() => save(layout.filter((b) => b.id !== box.id))} aria-label="Remove box" title="Remove box">

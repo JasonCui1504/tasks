@@ -13,7 +13,7 @@ import type { ItineraryItem, TripItinerary } from "./types";
 // travel username and password; the session is kept in travel_link and renewed
 // with the (encrypted) password when it expires.
 
-const TTL_MS = 5 * 60_000;
+const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; items: ItineraryItem[]; tz: string }>();
 
 const STATUSES = ["Booked", "Not booked", "Transit", "Booking unnecessary"];
