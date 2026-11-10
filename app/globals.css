@@ -1147,24 +1147,43 @@ a {
 .panel.collapsed .panel-head {
   border-bottom: 0;
 }
-.panel-select {
+.panel-pick {
+  position: relative;
   flex: 1;
   min-width: 0;
-  width: auto;
-  border: 0;
-  background-color: transparent;
+  display: flex;
+  cursor: pointer;
+}
+.panel-pick-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 4px 22px 4px 0;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--subtle);
-  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 9px) 52%, calc(100% - 4px) 52%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
 }
-.panel-select option {
-  text-transform: none;
-  letter-spacing: 0;
+.panel-pick:hover .panel-pick-label {
+  color: var(--text);
+}
+.panel-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.panel-select option,
+.panel-select optgroup {
   background: var(--surface);
   color: var(--text);
 }
@@ -1623,7 +1642,7 @@ a {
   }
 }
 
-.panel-select {
+.panel-pick {
   flex: 0 1 auto;
 }
 .panel-tools {
@@ -1757,6 +1776,39 @@ a {
   overflow: auto;
   padding: 10px 12px 12px;
   scrollbar-width: thin;
+}
+/* Invisible strips along each side (the box's gutter plus a sliver of its border)
+   for resizing from any edge; the corner handles sit on top of their ends. */
+.resize-edge {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+.resize-edge.n,
+.resize-edge.s {
+  left: 14px;
+  right: 14px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.resize-edge.n {
+  top: 0;
+}
+.resize-edge.s {
+  bottom: 0;
+}
+.resize-edge.e,
+.resize-edge.w {
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.resize-edge.e {
+  right: 0;
+}
+.resize-edge.w {
+  left: 0;
 }
 .resize-handle {
   position: absolute;

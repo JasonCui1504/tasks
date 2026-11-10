@@ -133,10 +133,13 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     registerWorker();
     loadItineraries();
     const tick = setInterval(() => setNow(new Date()), 60_000);
+    // While the page is on screen, pull fresh data (including trips from travel.jascui.com) every few minutes.
+    const sync = setInterval(() => document.visibilityState === "visible" && refresh(), 3 * 60_000);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(tick);
+      clearInterval(sync);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [initialSettings.timeZone, refresh, loadItineraries]);
