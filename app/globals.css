@@ -1758,6 +1758,39 @@ a {
   padding: 10px 12px 12px;
   scrollbar-width: thin;
 }
+/* Invisible strips along each side (the box's gutter plus a sliver of its border)
+   for resizing from any edge; the corner handles sit on top of their ends. */
+.resize-edge {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+.resize-edge.n,
+.resize-edge.s {
+  left: 14px;
+  right: 14px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.resize-edge.n {
+  top: 0;
+}
+.resize-edge.s {
+  bottom: 0;
+}
+.resize-edge.e,
+.resize-edge.w {
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.resize-edge.e {
+  right: 0;
+}
+.resize-edge.w {
+  left: 0;
+}
 .resize-handle {
   position: absolute;
   width: 16px;
