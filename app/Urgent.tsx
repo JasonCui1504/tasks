@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { daysBetween, formatDue, localDateKey, money, relativeDue } from "@/lib/time";
-import { URGENCIES, contactDueOn } from "@/lib/types";
+import { daysBetween, formatDateKey, formatDue, localDateKey, money, relativeDue } from "@/lib/time";
+import { URGENCIES, bookingKind, contactDueOn } from "@/lib/types";
 import { bucketOf, capitalize, type Actions, type Data } from "./shared";
 
 type Item = { key: string; text: string; sub: string; tone: "red" | "amber"; onClick: () => void };
@@ -92,6 +92,39 @@ export function urgentItems(d: Data, a: Actions): Item[] {
       tone: "amber",
       onClick: () => a.openContact(c),
     });
+  }
+
+  // Free-cancellation deadlines in the next 3 days: bookings entered in Tracking,
+  // and stays/cars from travel.jascui.com itineraries. Red on the last day.
+  const whenText = (days: number) => (days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`);
+  for (const bk of d.bookings) {
+    if (bk.status !== "booked" || !bk.cancelBy) continue;
+    const days = daysBetween(today, bk.cancelBy);
+    if (days < 0 || days > 3) continue;
+    const label = bk.name || [bk.number, bk.from && bk.to ? `${bk.from} → ${bk.to}` : ""].filter(Boolean).join(" ") || bookingKind(bk.kind).label;
+    items.push({
+      key: `b${bk.id}`,
+      text: `Last day to cancel ${label} free ${whenText(days)}`,
+      sub: `${bookingKind(bk.kind).label} · free cancellation until ${formatDateKey(bk.cancelBy)}`,
+      tone: days === 0 ? "red" : "amber",
+      onClick: () => a.openBooking(bk),
+    });
+  }
+  for (const it of d.itineraries) {
+    const trip = d.trips.find((t) => t.id === it.id);
+    for (const i of it.items) {
+      if (i.kind !== "deadline") continue;
+      const days = daysBetween(today, i.date);
+      if (days < 0 || days > 3) continue;
+      const name = i.title.replace(/^Last day to cancel free:\s*/, "");
+      items.push({
+        key: `d${it.id}|${i.date}|${i.title}`,
+        text: `Last day to cancel ${name} free ${whenText(days)}`,
+        sub: `${trip ? `${trip.name} · ` : ""}from travel.jascui.com`,
+        tone: days === 0 ? "red" : "amber",
+        onClick: () => a.goTab("tracking"),
+      });
+    }
   }
 
   // One line per thing, even if it matched twice.
