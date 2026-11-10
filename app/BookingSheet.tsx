@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BOOKING_KINDS, bookingKind, type Booking, type BookingInput, type BookingKind, type Trip } from "@/lib/types";
-import { Field, useSheet } from "./form";
+import { DateChips, Field, useSheet } from "./form";
 
 type Props = {
   booking: Booking | null;
@@ -124,6 +124,10 @@ export function BookingSheet({ booking, draft, trips, onClose, onSave, onDelete 
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label={`${k.end} time`} />
             </Field>
           </div>
+          <DateChips value={startDate} onChange={setStartDate} quick pickLabel={`Pick ${k.start.toLowerCase()} date`} />
+          <DateChips value={endDate} onChange={setEndDate} pickLabel={`Pick ${k.end.toLowerCase()} date`}>
+            {endDate && <button type="button" className="link" onClick={() => { setEndDate(""); setEndTime(""); }}>Clear {k.end.toLowerCase()}</button>}
+          </DateChips>
           {isTransport && <p className="muted small">Local times, as printed on the ticket.</p>}
 
           <div className="row2">
@@ -134,6 +138,9 @@ export function BookingSheet({ booking, draft, trips, onClose, onSave, onDelete 
               <input type="date" value={cancelBy} onChange={(e) => setCancelBy(e.target.value)} />
             </Field>
           </div>
+          <DateChips value={cancelBy} onChange={setCancelBy} pickLabel="Pick last day to cancel">
+            {cancelBy && <button type="button" className="link" onClick={() => setCancelBy("")}>No free cancellation</button>}
+          </DateChips>
 
           <div className="row2">
             <Field label="Trip" hint="optional">
