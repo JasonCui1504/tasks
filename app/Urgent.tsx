@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { daysBetween, formatDateKey, formatDue, localDateKey, money, relativeDue } from "@/lib/time";
-import { URGENCIES, bookingKind, contactDueOn } from "@/lib/types";
+import { URGENCIES, bookingKind, contactDueOn, isTodo } from "@/lib/types";
 import { bucketOf, capitalize, type Actions, type Data } from "./shared";
 
 type Item = { key: string; text: string; sub: string; tone: "red" | "amber"; onClick: () => void };
@@ -11,7 +11,7 @@ type Item = { key: string; text: string; sub: string; tone: "red" | "amber"; onC
 export function urgentItems(d: Data, a: Actions): Item[] {
   const today = localDateKey(d.now, d.tz);
   const items: Item[] = [];
-  const open = d.tasks.filter((t) => t.status === "open");
+  const open = d.tasks.filter(isTodo);
 
   const overdue = open.filter((t) => bucketOf(t, d.now, d.tz) === "overdue").sort((x, y) => y.urgency - x.urgency || (x.dueAt! < y.dueAt! ? -1 : 1));
   for (const t of overdue)

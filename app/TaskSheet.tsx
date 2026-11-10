@@ -9,6 +9,7 @@ import {
   URGENCIES,
   categoryInfo,
   defaultReminders,
+  isReminder,
   type RepeatUnit,
   type Task,
   type TaskInput,
@@ -105,7 +106,8 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
           allDay: !time,
           repeat,
           repeatEvery,
-          autoRenew: repeat !== "none" && autoRenew,
+          // Subscriptions are reminders: they always roll forward on their own.
+          autoRenew: repeat !== "none" && (autoRenew || isReminder({ category: finalCategory })),
           amount: amount === "" ? null : Number(amount),
           reminders,
           remindAt: remindAt ? new Date(remindAt).toISOString() : null,
@@ -120,6 +122,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
     }
   }
 
+  const reminder = isReminder({ category });
   const money = showAmount || category === "payment" || category === "subscription" || amount !== "";
 
   return (
@@ -127,7 +130,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
       <form className="sheet" onSubmit={submit} aria-label={init ? "Edit task" : "New task"}>
         <div className="sheet-head">
           <button type="button" className="link" onClick={onClose}>Cancel</button>
-          <strong>{init ? "Edit task" : "New task"}</strong>
+          <strong>{reminder ? (init ? "Subscription" : "New subscription") : init ? "Edit task" : "New task"}</strong>
           <button className="link strong" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
         </div>
 
@@ -136,7 +139,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
             className="title-input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="What needs doing?"
+            placeholder={reminder ? "Which subscription?" : "What needs doing?"}
             autoFocus={!init}
             aria-label="Title"
           />
@@ -160,7 +163,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
             </div>
           </Field>
 
-          <Field label="Urgency">
+          {!reminder && <Field label="Urgency">
             <div className="seg full" role="radiogroup">
               {URGENCIES.map((u) => (
                 <button type="button" key={u.value} role="radio" aria-checked={urgency === u.value} className={`${urgency === u.value ? "on" : ""} u${u.value}`} onClick={() => setUrgency(u.value)}>
@@ -169,10 +172,10 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
                 </button>
               ))}
             </div>
-          </Field>
+          </Field>}
 
           <div className="row2">
-            <Field label="Due date">
+            <Field label={reminder ? "Next renewal" : "Due date"}>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="Time" hint={date && !time ? "All day" : undefined}>
@@ -199,7 +202,11 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
               </Field>
             )}
           </div>
-          {repeat !== "none" && (
+          {reminder ? (
+            <p className="muted small">
+              A reminder, not a to-do: there&apos;s nothing to tick off. {repeat !== "none" ? "It rolls to the next renewal on its own" : "It clears itself once the date passes"}, and you get the alerts below before {repeat !== "none" ? "each renewal" : "it"}.
+            </p>
+          ) : repeat !== "none" && (
             <label className="toggle block">
               <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
               <span>
@@ -253,7 +260,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
 
           {init && (
             <div className="sheet-foot">
-              {init.status === "open" && (
+              {init.status === "open" && !isReminder(init) && (
                 <>
                   <div className="snooze">
                     <span className="muted small">Snooze</span>

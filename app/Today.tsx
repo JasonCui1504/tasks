@@ -2,16 +2,19 @@
 
 import { useState } from "react";
 import { localDateKey } from "@/lib/time";
+import { isReminder, isTodo } from "@/lib/types";
 import { bucketOf, byDue, TaskRow, type Actions, type Data } from "./shared";
 
 /** The day's to-do list: overdue + due today, today's events, and a box to add to today. */
 export function TodayList({ data, actions, compact }: { data: Data; actions: Actions; compact?: boolean }) {
   const [quick, setQuick] = useState("");
   const today = localDateKey(data.now, data.tz);
-  const open = data.tasks.filter((t) => t.status === "open");
+  const open = data.tasks.filter(isTodo);
+  // Subscriptions renewing today: shown as a heads-up, not a to-do.
+  const renewing = data.tasks.filter((t) => t.status === "open" && isReminder(t) && t.dueAt && bucketOf(t, data.now, data.tz) === "today").sort(byDue);
   const overdue = open.filter((t) => bucketOf(t, data.now, data.tz) === "overdue").sort(byDue);
   const due = open.filter((t) => bucketOf(t, data.now, data.tz) === "today").sort(byDue);
-  const doneToday = data.tasks.filter((t) => (t.status === "done" && t.completedAt && localDateKey(new Date(t.completedAt), data.tz) === today) || (t.lastDoneAt && localDateKey(new Date(t.lastDoneAt), data.tz) === today && t.status === "open"));
+  const doneToday = data.tasks.filter((t) => (t.status === "done" && t.completedAt && localDateKey(new Date(t.completedAt), data.tz) === today) || (t.lastDoneAt && localDateKey(new Date(t.lastDoneAt), data.tz) === today && isTodo(t)));
   const events = data.events.filter((e) => localDateKey(new Date(e.startsAt), data.tz) === today);
 
   async function add(e: React.FormEvent) {
@@ -66,6 +69,7 @@ export function TodayList({ data, actions, compact }: { data: Data; actions: Act
 
       {section("Overdue", overdue, true)}
       {section("Today", due)}
+      {section("Renewing today", renewing)}
 
       {!overdue.length && !due.length && <p className="muted small panel-empty">Nothing due today.{doneToday.length ? ` ${doneToday.length} done so far.` : ""}</p>}
       {(overdue.length > 0 || due.length > 0) && doneToday.length > 0 && <p className="muted small">✓ {doneToday.length} done today</p>}

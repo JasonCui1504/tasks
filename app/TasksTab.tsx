@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { daysBetween, localDateKey, money, monthlyCost } from "@/lib/time";
-import { URGENCIES, categoryInfo } from "@/lib/types";
+import { URGENCIES, categoryInfo, isReminder, isTodo } from "@/lib/types";
 import { BUCKET_LABELS, BUCKET_ORDER, Chip, Stat, TaskRow, bucketOf, byDue, type Actions, type Data } from "./shared";
 
 export type When = "all" | "overdue" | "today" | "week";
@@ -13,7 +13,7 @@ export type Counts = { overdue: number; today: number; week: number };
 export function taskCounts(data: Data): Counts {
   const c = { overdue: 0, today: 0, week: 0 };
   for (const t of data.tasks) {
-    if (t.status !== "open") continue;
+    if (!isTodo(t)) continue;
     const b = bucketOf(t, data.now, data.tz);
     if (b === "overdue") c.overdue++;
     else if (b === "today") c.today++;
@@ -65,6 +65,8 @@ export function TasksTab({ data, actions, noStats }: { data: Data; actions: Acti
   const visible = useMemo(() => {
     const pool = showDone ? tasks.filter((t) => t.status === "done") : open;
     return pool.filter((t) => {
+      // Reminders (subscriptions) only show when you pick their category.
+      if (category === "all" && isReminder(t)) return false;
       if (category !== "all" && t.category !== category && !(category === "trip" && t.tripId != null)) return false;
       if (t.urgency < minUrgency) return false;
       if (!showDone && when !== "all") {
@@ -133,7 +135,7 @@ export function TasksTab({ data, actions, noStats }: { data: Data; actions: Acti
       </form>
 
       <nav className="chips" aria-label="Categories">
-        <Chip active={category === "all"} onClick={() => setCategory("all")} label="All" count={open.length} />
+        <Chip active={category === "all"} onClick={() => setCategory("all")} label="All" count={open.filter((t) => isTodo(t)).length} />
         {categories.map((id) => {
           const info = categoryInfo(id);
           const n = categoryCounts.get(id) ?? 0;

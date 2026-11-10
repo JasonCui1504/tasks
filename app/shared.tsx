@@ -8,6 +8,7 @@ import {
   REPEATS,
   URGENCIES,
   categoryInfo,
+  isReminder,
   type Booking,
   type BookingInput,
   type CalendarEvent,
@@ -39,7 +40,8 @@ export function bucketOf(t: Task, now: Date, tz: string): Bucket {
   const due = new Date(t.dueAt);
   const today = localDateKey(now, tz);
   const key = localDateKey(due, tz);
-  if (key < today || (!t.allDay && due < now)) return "overdue";
+  // A reminder is never overdue: once its date passes it's about to roll forward.
+  if (key < today || (!t.allDay && due < now)) return isReminder(t) ? "today" : "overdue";
   const d = daysBetween(today, key);
   if (d === 0) return "today";
   if (d === 1) return "tomorrow";
@@ -136,6 +138,12 @@ export function Chip({ label, count, color, active, onClick }: { label: string; 
   );
 }
 
+/** "Renews in 3 days", "Renews today" — a renewal that has just passed reads as today until it rolls forward. */
+export function renewText(due: Date, now: Date, tz: string, allDay: boolean): string {
+  const days = daysBetween(localDateKey(now, tz), localDateKey(due, tz));
+  return days <= 0 ? "Renews today" : `Renews ${relativeDue(due, now, tz, allDay)}`;
+}
+
 export function TaskRow({
   task: t,
   now,
@@ -157,15 +165,25 @@ export function TaskRow({
 }) {
   const info = categoryInfo(t.category);
   const due = t.dueAt ? new Date(t.dueAt) : null;
-  const overdue = t.status === "open" && due && bucketOf(t, now, tz) === "overdue";
+  const reminder = isReminder(t);
+  const overdue = !reminder && t.status === "open" && due && bucketOf(t, now, tz) === "overdue";
   const repeat = REPEATS.find((r) => r.value === t.repeat);
   return (
     <li className={`task u${t.urgency} ${t.status === "done" ? "done" : ""} ${compact ? "compact" : ""}`}>
-      <button className="check" onClick={onToggle} aria-label={t.status === "done" ? "Mark as not done" : "Mark as done"}>
-        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
-          <path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      {reminder ? (
+        // A reminder: nothing to tick off, it renews on its own.
+        <span className="check reminder-mark" title="Reminder — renews on its own" aria-hidden>
+          <svg viewBox="0 0 24 24" width="13" height="13">
+            <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+        </span>
+      ) : (
+        <button className="check" onClick={onToggle} aria-label={t.status === "done" ? "Mark as not done" : "Mark as done"}>
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+            <path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
       <button className="task-main" onClick={onOpen}>
         <span className="task-title">{t.title}</span>
         <span className="task-meta">
@@ -175,7 +193,13 @@ export function TaskRow({
               {info.label}
             </span>
           )}
-          {due && (
+          {due && reminder && t.status === "open" && (
+            <span>
+              {renewText(due, now, tz, t.allDay)}
+              {!compact && ` · ${formatDue(due, tz, t.allDay)}`}
+            </span>
+          )}
+          {due && !(reminder && t.status === "open") && (
             <span className={overdue ? "danger" : ""}>
               {t.status === "done" || compact
                 ? capitalize(compact ? relativeDue(due, now, tz, t.allDay) : formatDue(due, tz, t.allDay))
@@ -189,7 +213,7 @@ export function TaskRow({
           )}
           {t.amount != null && <span>{money(t.amount)}</span>}
           {trip && !compact && <span>✈ {trip.name}</span>}
-          {(t.reminders.length > 0 || t.remindAt) && due && t.status === "open" && !compact && <span className="bell" title="Reminders on">🔔</span>}
+          {!reminder && (t.reminders.length > 0 || t.remindAt) && due && t.status === "open" && !compact && <span className="bell" title="Reminders on">🔔</span>}
         </span>
       </button>
       {t.urgency !== 1 && !compact && <span className={`badge u${t.urgency}`}>{URGENCIES[t.urgency].label}</span>}

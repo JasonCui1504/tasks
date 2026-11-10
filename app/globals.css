@@ -495,6 +495,12 @@ a {
 .check:hover {
   color: var(--muted);
 }
+/* A subscription: a reminder, so a bell instead of a tick box. */
+.check.reminder-mark {
+  border-style: dashed;
+  border-color: #9b59d0 !important;
+  color: #9b59d0;
+}
 .task.done .check {
   background: var(--accent);
   border-color: var(--accent);

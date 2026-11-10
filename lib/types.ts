@@ -50,6 +50,20 @@ export const REMINDER_PRESETS: { minutes: number; label: string }[] = [
   { minutes: 10080, label: "1 week before" },
 ];
 
+/**
+ * Subscriptions are reminders, not to-dos: nothing to tick off. They renew on
+ * their own (rolling to the next date once it passes), alert ahead of each
+ * renewal, and stay out of to-do lists, overdue counts and the badge.
+ */
+export function isReminder(t: { category: string }): boolean {
+  return t.category === "subscription";
+}
+
+/** An open task that needs doing (not a reminder). */
+export function isTodo(t: { category: string; status: string }): boolean {
+  return t.status === "open" && !isReminder(t);
+}
+
 export function defaultReminders(category: string): number[] {
   if (category === "payment") return [4320, 1440, 0];
   if (category === "subscription") return [4320, 0];

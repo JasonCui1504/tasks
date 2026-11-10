@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { daysBetween, formatDateKey, formatDue, localDateKey, money } from "@/lib/time";
 import {
   CATEGORIES,
+  isReminder,
   contactDueOn,
   type Booking,
   type BookingInput,
@@ -214,7 +215,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   const open = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
 
   useEffect(() => {
-    setBadge(open.filter((t) => ["overdue", "today"].includes(bucketOf(t, now, tz))).length);
+    setBadge(open.filter((t) => !isReminder(t) && ["overdue", "today"].includes(bucketOf(t, now, tz))).length);
   }, [open, now, tz]);
 
   // Built-in categories in a fixed order, then any custom ones in use.
