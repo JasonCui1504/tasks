@@ -81,3 +81,50 @@ export function MiniMonth({ value, onPick }: { value: string; onPick: (date: str
     </div>
   );
 }
+
+/**
+ * Quick date chips under a date field: Today / Tomorrow / In a week (with `quick`)
+ * and a "Pick a date" chip that opens a small month calendar. `children` adds
+ * links after the chips (Clear date, Make all-day…).
+ */
+export function DateChips({
+  value,
+  onChange,
+  quick,
+  pickLabel = "Pick a date",
+  children,
+}: {
+  value: string;
+  onChange: (date: string) => void;
+  quick?: boolean;
+  pickLabel?: string;
+  children?: React.ReactNode;
+}) {
+  const [picking, setPicking] = useState(false);
+  const set = (k: string) => {
+    onChange(k);
+    setPicking(false);
+  };
+  return (
+    <>
+      <div className="quick-dates">
+        {quick &&
+          ([["Today", 0], ["Tomorrow", 1], ["In a week", 7]] as const).map(([label, days]) => {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            const k = splitLocal(d.toISOString(), true).date;
+            return (
+              <button type="button" key={label} className={`chip ${value === k ? "active" : ""}`} onClick={() => set(k)}>
+                {label}
+              </button>
+            );
+          })}
+        <button type="button" className={`chip ${picking ? "active" : ""}`} onClick={() => setPicking(!picking)} aria-expanded={picking}>
+          {pickLabel}
+        </button>
+        {children}
+      </div>
+      {picking && <MiniMonth value={value} onPick={set} />}
+    </>
+  );
+}

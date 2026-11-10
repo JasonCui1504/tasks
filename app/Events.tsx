@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { daysBetween, localDateKey, relativeDue } from "@/lib/time";
 import { DEFAULT_EVENT_REMINDERS, REMINDER_PRESETS, type CalendarEvent, type CalendarEventInput } from "@/lib/types";
-import { Field, splitLocal, useSheet } from "./form";
+import { DateChips, Field, splitLocal, useSheet } from "./form";
 
 type Item = { key: string; date: string; sort: string; event: CalendarEvent };
 
@@ -217,6 +217,7 @@ export function EventSheet({ event, draftDate, draftTimes, onClose, onSave, onDe
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!date} />
             </Field>
           </div>
+          <DateChips value={date} onChange={setDate} quick />
           {time && (
             <div className="row2">
               <Field label="Ends" hint="optional">

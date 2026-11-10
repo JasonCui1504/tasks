@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDateKey } from "@/lib/time";
-import { Field, MiniMonth, splitLocal } from "./form";
+import { DateChips, Field, splitLocal } from "./form";
 import {
   REMINDER_PRESETS,
   REPEATS,
@@ -49,7 +49,6 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
   const [urgency, setUrgency] = useState<Urgency>(init?.urgency ?? draft?.urgency ?? 1);
   const [date, setDate] = useState(due.date);
   const [time, setTime] = useState(due.time);
-  const [picking, setPicking] = useState(false);
   const [repeat, setRepeat] = useState<RepeatUnit>(init?.repeat ?? draft?.repeat ?? "none");
   const [repeatEvery, setRepeatEvery] = useState(init?.repeatEvery ?? 1);
   const [autoRenew, setAutoRenew] = useState(init?.autoRenew ?? false);
@@ -180,24 +179,10 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!date} />
             </Field>
           </div>
-          <div className="quick-dates">
-            {([["Today", 0], ["Tomorrow", 1], ["In a week", 7]] as const).map(([label, days]) => {
-              const d = new Date();
-              d.setDate(d.getDate() + days);
-              const k = splitLocal(d.toISOString(), true).date;
-              return (
-                <button type="button" key={label} className={`chip ${date === k ? "active" : ""}`} onClick={() => { setDate(k); setPicking(false); }}>
-                  {label}
-                </button>
-              );
-            })}
-            <button type="button" className={`chip ${picking ? "active" : ""}`} onClick={() => setPicking(!picking)} aria-expanded={picking}>
-              Pick a date
-            </button>
-            {date && <button type="button" className="link" onClick={() => { setDate(""); setTime(""); setPicking(false); }}>Clear date</button>}
+          <DateChips value={date} onChange={setDate} quick>
+            {date && <button type="button" className="link" onClick={() => { setDate(""); setTime(""); }}>Clear date</button>}
             {date && time && <button type="button" className="link" onClick={() => setTime("")}>Make all-day</button>}
-          </div>
-          {picking && <MiniMonth value={date} onPick={(k) => { setDate(k); setPicking(false); }} />}
+          </DateChips>
 
           <div className="row2">
             <Field label="Repeat">
