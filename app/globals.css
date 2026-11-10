@@ -2183,6 +2183,43 @@ button.info-tile:hover {
 }
 .timeline-lanes {
   cursor: crosshair;
+  --free: 28px;
+}
+/* The always-free strip on the right: drag here to add beside an event. */
+.timeline-lanes::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: calc(var(--free) - 4px);
+  border-left: 1px dashed color-mix(in srgb, var(--line) 70%, transparent);
+  pointer-events: none;
+}
+.timeline-lanes:hover::after {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.block.trip.chosen {
+  outline: 1px solid var(--c);
+  z-index: 2;
+}
+.block-menu {
+  display: grid;
+  gap: 6px;
+}
+.block-menu-title {
+  margin: 0;
+  font-weight: 500;
+  font-size: 13.5px;
+}
+.block-menu .muted {
+  margin: 0;
+}
+.block-menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 .timeline-lanes.picking {
   user-select: none;
@@ -2398,4 +2435,51 @@ button.info-tile:hover {
 .trk-card h3 {
   margin: 0 0 8px;
   font-size: 15px;
+}
+
+/* ---------- mini month (pick a due date) ---------- */
+
+.mini-month {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+  background: var(--bg);
+  max-width: 320px;
+}
+.mini-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+}
+.mini-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.mini-month-dow {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.mini-month-grid button {
+  height: 34px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+.mini-month-grid button:hover {
+  background: var(--surface-2);
+}
+.mini-month-grid button.past {
+  color: var(--muted);
+}
+.mini-month-grid button.today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.mini-month-grid button.on {
+  background: var(--accent);
+  color: var(--accent-text);
 }
