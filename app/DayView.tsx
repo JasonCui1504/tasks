@@ -441,9 +441,11 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
           )}
           {blocks.map((b) => {
             const start = moving?.key === b.key ? moving.preview : b.start;
+            const height = Math.max(22, (b.end - b.start) * HOUR_PX - 2);
             const style = {
               top: start * HOUR_PX + 1,
-              height: Math.max(22, (b.end - b.start) * HOUR_PX - 2),
+              height,
+              "--h": `${height}px`,
               left: `${((b.lane ?? 0) / (b.lanes ?? 1)) * 100}%`,
               width: `calc(${100 / (b.lanes ?? 1)}% - 4px)`,
               "--c": b.color,

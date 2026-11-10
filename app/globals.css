@@ -2125,8 +2125,10 @@ button.info-tile:hover {
   background: color-mix(in srgb, var(--c) 30%, var(--surface));
   z-index: 1;
   overflow: visible;
+  /* Grow to show everything, but never shrink below the block's own size:
+     shrinking would move it out from under the pointer and flicker. */
   height: auto !important;
-  min-height: fit-content;
+  min-height: var(--h);
 }
 .block.trip {
   background: color-mix(in srgb, var(--c) 26%, var(--surface));
