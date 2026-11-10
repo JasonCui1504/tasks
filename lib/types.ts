@@ -132,6 +132,10 @@ export type SentNotification = {
 
 // ---- gift cards ----
 
+/** A trip's packing list (named here; not tied to the travel app's trips). */
+export type PackingItem = { id: number; listId: number; name: string; packed: boolean };
+export type PackingList = { id: number; name: string; createdAt: string; items: PackingItem[] };
+
 export type GiftCard = {
   id: number;
   /** Where it's spent: "Amazon", "Starbucks", "Visa gift card"… */

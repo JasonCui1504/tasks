@@ -143,6 +143,23 @@ const SCHEMA = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS bookings_owner_start ON bookings(owner, start_date)`,
+  // Packing lists: one per trip the owner names here (not linked to travel trips), each with its own items.
+  `CREATE TABLE IF NOT EXISTS packing_lists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS packing_lists_owner ON packing_lists(owner)`,
+  `CREATE TABLE IF NOT EXISTS packing_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    list_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    packed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS packing_items_list ON packing_items(owner, list_id)`,
   // Signed in to travel.jascui.com to read trip itineraries: the travel app's
   // session token, plus the password encrypted with TASKS_SESSION_SECRET so the
   // session can be renewed when it expires (every 30 days). Deleted on Disconnect.

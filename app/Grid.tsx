@@ -8,6 +8,7 @@ import { TopInfo } from "./TopInfo";
 import { ContactsView } from "./Contacts";
 import { EventsView } from "./Events";
 import { GiftCardsView } from "./GiftCards";
+import { PackingView } from "./Packing";
 import { CardsPanel, CategoryPanel, EventsPanel, PeoplePanel } from "./Panels";
 import type { Actions, Data } from "./shared";
 import { SummaryStats, TasksTab } from "./TasksTab";
@@ -29,7 +30,7 @@ const MIN_W = 3;
 const MIN_H = 2;
 const STORE_KEY = "tasks.grid.v3";
 
-export type BoxView = "today" | "tasks" | "summary" | "urgent" | "calendar" | "day" | "events" | "trips" | "tracking" | "tobook" | "people" | "cards" | `cat:${string}`;
+export type BoxView = "today" | "tasks" | "summary" | "urgent" | "calendar" | "day" | "events" | "trips" | "tracking" | "tobook" | "people" | "cards" | "packing" | `cat:${string}`;
 export type Box = { id: string; view: BoxView; x: number; y: number; w: number; h: number };
 
 const DEFAULT_LAYOUT: Box[] = [
@@ -57,6 +58,7 @@ const BASE_VIEWS: { view: BoxView; label: string }[] = [
   { view: "tobook", label: "Still to book" },
   { view: "people", label: "Stay in touch" },
   { view: "cards", label: "Gift cards" },
+  { view: "packing", label: "Packing list" },
 ];
 
 export function viewLabel(v: BoxView): string {
@@ -394,6 +396,8 @@ function BoxContent({ view, data, actions, px, hasDayView }: { view: BoxView; da
       ) : (
         <CardsPanel data={data} actions={actions} />
       );
+    case "packing":
+      return <PackingView />;
     default:
       return view.startsWith("cat:") ? <CategoryPanel cat={view.slice(4)} data={data} actions={actions} /> : null;
   }

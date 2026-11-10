@@ -1,6 +1,6 @@
 import type { Row } from "@libsql/client";
 import { getDb } from "./db";
-import { BOOKING_KINDS, type Booking, type BookingInput, type BookingKind, type CalendarEvent, CalendarEventInput, Contact, ContactInput, ContactLog, GiftCard, GiftCardInput } from "./types";
+import { BOOKING_KINDS, type Booking, type BookingInput, type BookingKind, type CalendarEvent, CalendarEventInput, Contact, ContactInput, ContactLog, GiftCard, GiftCardInput, PackingItem, PackingList } from "./types";
 
 // Gift cards, events, stay-in-touch contacts and tracked bookings: the lists beside tasks. Same rules as lib/tasks.ts —
 // everything is scoped to its owner, input is cleaned here, and a bad value
@@ -518,4 +518,101 @@ export async function updateBooking(owner: string, id: number, input: BookingInp
 export async function deleteBooking(owner: string, id: number): Promise<void> {
   const db = await getDb();
   await db.execute({ sql: "DELETE FROM bookings WHERE owner = ? AND id = ?", args: [owner, id] });
+}
+
+// ---- packing lists ----
+
+function cleanName(v: unknown, what: string): string {
+  const name = String(v ?? "").trim().slice(0, 200);
+  if (!name) throw `Give the ${what} a name.`;
+  return name;
+}
+
+function rowToPackingItem(r: Row): PackingItem {
+  return { id: Number(r.id), listId: Number(r.list_id), name: String(r.name), packed: Boolean(Number(r.packed)) };
+}
+
+/** Every packing list with its items, newest trip first; items in the order they were added. */
+export async function listPackingLists(owner: string): Promise<PackingList[]> {
+  const db = await getDb();
+  const [lists, items] = await Promise.all([
+    db.execute({ sql: "SELECT * FROM packing_lists WHERE owner = ? ORDER BY id DESC", args: [owner] }),
+    db.execute({ sql: "SELECT * FROM packing_items WHERE owner = ? ORDER BY id", args: [owner] }),
+  ]);
+  const byList = new Map<number, PackingItem[]>();
+  for (const r of items.rows) {
+    const item = rowToPackingItem(r);
+    byList.set(item.listId, [...(byList.get(item.listId) ?? []), item]);
+  }
+  return lists.rows.map((r) => ({ id: Number(r.id), name: String(r.name), createdAt: String(r.created_at), items: byList.get(Number(r.id)) ?? [] }));
+}
+
+export async function createPackingList(owner: string, name: unknown): Promise<PackingList> {
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: "INSERT INTO packing_lists (owner, name, created_at) VALUES (?, ?, ?) RETURNING *",
+    args: [owner, cleanName(name, "trip"), nowIso()],
+  });
+  const r = rs.rows[0];
+  return { id: Number(r.id), name: String(r.name), createdAt: String(r.created_at), items: [] };
+}
+
+export async function renamePackingList(owner: string, id: number, name: unknown): Promise<boolean> {
+  const db = await getDb();
+  const rs = await db.execute({ sql: "UPDATE packing_lists SET name = ? WHERE owner = ? AND id = ?", args: [cleanName(name, "trip"), owner, id] });
+  return rs.rowsAffected > 0;
+}
+
+export async function deletePackingList(owner: string, id: number): Promise<void> {
+  const db = await getDb();
+  await db.batch(
+    [
+      { sql: "DELETE FROM packing_items WHERE owner = ? AND list_id = ?", args: [owner, id] },
+      { sql: "DELETE FROM packing_lists WHERE owner = ? AND id = ?", args: [owner, id] },
+    ],
+    "write",
+  );
+}
+
+export async function addPackingItem(owner: string, listId: number, name: unknown): Promise<PackingItem | null> {
+  const db = await getDb();
+  const list = await db.execute({ sql: "SELECT id FROM packing_lists WHERE owner = ? AND id = ?", args: [owner, listId] });
+  if (!list.rows.length) return null;
+  const rs = await db.execute({
+    sql: "INSERT INTO packing_items (owner, list_id, name, packed, created_at) VALUES (?, ?, ?, 0, ?) RETURNING *",
+    args: [owner, listId, cleanName(name, "item"), nowIso()],
+  });
+  return rowToPackingItem(rs.rows[0]);
+}
+
+export async function updatePackingItem(owner: string, listId: number, id: number, body: Record<string, unknown>): Promise<PackingItem | null> {
+  const sets: string[] = [];
+  const args: (string | number)[] = [];
+  if ("name" in body) {
+    sets.push("name = ?");
+    args.push(cleanName(body.name, "item"));
+  }
+  if ("packed" in body) {
+    sets.push("packed = ?");
+    args.push(body.packed ? 1 : 0);
+  }
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: sets.length
+      ? `UPDATE packing_items SET ${sets.join(", ")} WHERE owner = ? AND list_id = ? AND id = ? RETURNING *`
+      : "SELECT * FROM packing_items WHERE owner = ? AND list_id = ? AND id = ?",
+    args: [...args, owner, listId, id],
+  });
+  return rs.rows.length ? rowToPackingItem(rs.rows[0]) : null;
+}
+
+/** Mark every item on a list packed or unpacked (e.g. "Unpack all" for the trip home). */
+export async function setAllPacked(owner: string, listId: number, packed: boolean): Promise<void> {
+  const db = await getDb();
+  await db.execute({ sql: "UPDATE packing_items SET packed = ? WHERE owner = ? AND list_id = ?", args: [packed ? 1 : 0, owner, listId] });
+}
+
+export async function deletePackingItem(owner: string, listId: number, id: number): Promise<void> {
+  const db = await getDb();
+  await db.execute({ sql: "DELETE FROM packing_items WHERE owner = ? AND list_id = ? AND id = ?", args: [owner, listId, id] });
 }

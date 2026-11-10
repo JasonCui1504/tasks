@@ -1309,6 +1309,30 @@ a {
   }
 }
 
+/* ---------- packing ---------- */
+
+.packing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.packing-head .link {
+  font-size: 13px;
+}
+.packing-title {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  padding: 2px;
+}
+.packing-title strong {
+  font-size: 16px;
+}
+.task.compact .panel-btn {
+  flex: none;
+}
+
 /* ---------- trips ---------- */
 
 .trip-stack {
@@ -2482,4 +2506,7 @@ button.info-tile:hover {
 .mini-month-grid button.on {
   background: var(--accent);
   color: var(--accent-text);
+}
+.panel-btn.danger-text {
+  color: var(--danger);
 }
