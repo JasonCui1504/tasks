@@ -152,6 +152,8 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
   // Picking a time: while dragging (`pick`), then the composer for the picked range.
   const [pick, setPick] = useState<{ anchor: number; current: number } | null>(null);
   const [compose, setCompose] = useState<{ start: number; end: number } | null>(null);
+  // A clicked itinerary block: asks before leaving for travel.jascui.com, or adds something at its time.
+  const [menu, setMenu] = useState<{ key: string; title: string; href: string; start: number; end: number } | null>(null);
   // Moving a block: its key and preview start.
   const [moving, setMoving] = useState<{ key: string; startY: number; orig: number; dur: number; preview: number; moveTo: (s: number) => void; onOpen?: () => void } | null>(null);
   // A touch press waiting out HOLD_MS; and a short guard so the tap that ends a touch move doesn't also open the item.
@@ -217,11 +219,13 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
     if (e.pointerType === "touch") {
       beginHold(e, () => {
         setCompose(null);
+        setMenu(null);
         setPick({ anchor: slot, current: slot });
       });
       return;
     }
     setCompose(null);
+    setMenu(null);
     e.preventDefault();
     setPick({ anchor: slot, current: slot });
   }
@@ -407,7 +411,7 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
       )}
 
       {tripClockNote && <p className="muted small">{tripClockNote}</p>}
-      <p className="muted small hint">Drag on the timeline to add a task or event; drag one to move it.</p>
+      <p className="muted small hint">Drag on the timeline to add a task or event — the strip on the right is always free, even beside an event. Drag one to move it.</p>
 
       <div ref={timelineRef} className="timeline" style={{ height: 24 * HOUR_PX }}>
         {hours.map((h) => (
@@ -446,8 +450,9 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
               top: start * HOUR_PX + 1,
               height,
               "--h": `${height}px`,
-              left: `${((b.lane ?? 0) / (b.lanes ?? 1)) * 100}%`,
-              width: `calc(${100 / (b.lanes ?? 1)}% - 4px)`,
+                      // Blocks leave a strip free on the right, so there's always room to drag in something new.
+              left: `calc((100% - var(--free)) * ${(b.lane ?? 0) / (b.lanes ?? 1)})`,
+              width: `calc((100% - var(--free)) / ${b.lanes ?? 1} - 4px)`,
               "--c": b.color,
             } as React.CSSProperties;
             const inner = (
@@ -460,7 +465,19 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
             if (b.href) {
               return (
                 // A div, not a link: the block holds its own links (map, reservation).
-                <div key={b.key} className="block trip" style={style} role="link" tabIndex={0} onClick={() => window.open(b.href, "_blank", "noopener")} onKeyDown={(e) => e.key === "Enter" && window.open(b.href, "_blank", "noopener")}>
+                <div
+                  key={b.key}
+                  className={`block trip ${menu?.key === b.key ? "chosen" : ""}`}
+                  style={style}
+                  role="button"
+                  tabIndex={0}
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    setCompose(null);
+                    setMenu({ key: b.key, title: b.title, href: b.href!, start: b.start, end: b.end });
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && setMenu({ key: b.key, title: b.title, href: b.href!, start: b.start, end: b.end })}
+                >
                   <span className="block-sub">{clock(b.start)}–{clock(b.end)}</span>
                   {inner}
                 </div>
@@ -496,6 +513,45 @@ export function DayView({ data, actions }: { data: Data; actions: Actions }) {
               </button>
             );
           })}
+          {menu && (
+            <div
+              className="composer block-menu"
+              style={{ top: Math.min(menu.end * HOUR_PX + 4, 24 * HOUR_PX - 150) }}
+              role="dialog"
+              aria-label={menu.title}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.key === "Escape" && setMenu(null)}
+            >
+              <p className="block-menu-title">{menu.title}</p>
+              <p className="muted small">
+                {clock(menu.start)} – {clock(menu.end)} · from travel.jascui.com
+              </p>
+              <div className="block-menu-actions">
+                <button
+                  className="btn primary small-btn"
+                  autoFocus
+                  onClick={() => {
+                    setCompose({ start: menu.start, end: Math.min(24, Math.max(menu.end, menu.start + SLOT)) });
+                    setMenu(null);
+                  }}
+                >
+                  + Add task or event at this time
+                </button>
+                <button
+                  className="btn small-btn"
+                  onClick={() => {
+                    window.open(menu.href, "_blank", "noopener");
+                    setMenu(null);
+                  }}
+                >
+                  Open on travel.jascui.com ↗
+                </button>
+                <button className="link small" onClick={() => setMenu(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           {compose && <Composer date={date} range={compose} actions={actions} onClose={() => setCompose(null)} />}
         </div>
       </div>
