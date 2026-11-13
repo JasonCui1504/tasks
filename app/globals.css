@@ -500,6 +500,31 @@ a {
   border-color: var(--accent);
   color: var(--accent-text);
 }
+/* Payments/subscriptions: acknowledged or deferred, greyed out until they're back. */
+.check.ack {
+  border-radius: 7px;
+}
+.task.quiet {
+  opacity: 0.45;
+}
+.task.quiet .check {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: var(--bg);
+}
+.later {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: transparent;
+}
+.later:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
 .task.done .task-title {
   text-decoration: line-through;
   color: var(--muted);

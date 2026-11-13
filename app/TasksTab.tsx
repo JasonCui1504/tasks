@@ -190,6 +190,7 @@ export function TasksTab({ data, actions, noStats }: { data: Data; actions: Acti
                   trip={t.tripId != null ? trips.find((x) => x.id === t.tripId) : undefined}
                   onToggle={() => actions.toggleTask(t)}
                   onOpen={() => actions.openTask(t)}
+                  onDefer={() => actions.deferTask(t, 24 * 60)}
                 />
               ))}
             </ul>

@@ -83,7 +83,19 @@ export type Task = {
   updatedAt: string;
   /** Reminders scheduled before this moment are skipped (they were already past when set). */
   remindersFrom: string;
+  /** Acknowledged or deferred: shown greyed out, and quiet, until this moment. */
+  quietUntil: string | null;
 };
+
+/** Payments and subscriptions are reminders: acknowledged or deferred rather than ticked off. */
+export function isReminderTask(t: Pick<Task, "category">): boolean {
+  return t.category === "payment" || t.category === "subscription";
+}
+
+/** Acknowledged or deferred, and not back yet. */
+export function isQuiet(t: Pick<Task, "quietUntil" | "status">, now: Date): boolean {
+  return t.status === "open" && !!t.quietUntil && Date.parse(t.quietUntil) > now.getTime();
+}
 
 export type TaskInput = Partial<
   Pick<

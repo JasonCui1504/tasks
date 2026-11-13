@@ -33,6 +33,7 @@ export function rowToTask(r: Row): Task {
     createdAt: String(r.created_at),
     updatedAt: String(r.updated_at),
     remindersFrom: String(r.reminders_from),
+    quietUntil: str(r.quiet_until),
   };
 }
 
@@ -141,9 +142,20 @@ export async function updateTask(owner: string, id: number, input: TaskInput): P
   const db = await getDb();
   const now = new Date().toISOString();
   // Changing when it's due or how it reminds re-arms the reminders from now on.
-  const rearm = keys.some((k) => k === "dueAt" || k === "reminders" || k === "remindAt");
+  let rearm = keys.some((k) => k === "dueAt" || k === "reminders" || k === "remindAt");
+  if (rearm) {
+    // A save that leaves them as they were (the sheet sends every field) changes nothing.
+    const before = await getTask(owner, id);
+    const minute = (v: string | null | undefined) => (v ? Math.floor(Date.parse(v) / 60_000) : null);
+    if (before)
+      rearm =
+        ("dueAt" in input && minute(input.dueAt) !== minute(before.dueAt)) ||
+        ("reminders" in input && JSON.stringify([...(input.reminders ?? [])].sort()) !== JSON.stringify([...before.reminders].sort())) ||
+        ("remindAt" in input && minute(input.remindAt) !== minute(before.remindAt));
+  }
   const sets = keys.map((k) => `${COLUMNS[k]} = ?`);
-  if (rearm) sets.push("reminders_from = ?");
+  // …and brings back an acknowledged or deferred reminder.
+  if (rearm) sets.push("reminders_from = ?", "quiet_until = NULL");
   const rs = await db.execute({
     sql: `UPDATE tasks SET ${sets.join(", ")}, updated_at = ? WHERE owner = ? AND id = ? RETURNING *`,
     args: [...keys.map((k) => dbValue(k, input[k])), ...(rearm ? [now] : []), now, owner, id],
@@ -171,7 +183,7 @@ export async function completeTask(owner: string, id: number, tz: string): Promi
     let next = addRepeat(task.dueAt, task.repeat, task.repeatEvery, tz);
     if (Date.parse(next) < now.getTime()) next = nextOccurrenceAfter(next, task.repeat, task.repeatEvery, tz, now);
     const rs = await db.execute({
-      sql: `UPDATE tasks SET due_at = ?, last_done_at = ?, remind_at = NULL, reminders_from = ?, updated_at = ?
+      sql: `UPDATE tasks SET due_at = ?, last_done_at = ?, remind_at = NULL, reminders_from = ?, quiet_until = NULL, updated_at = ?
             WHERE owner = ? AND id = ? RETURNING *`,
       args: [next, nowIso, nowIso, nowIso, owner, id],
     });
@@ -191,6 +203,52 @@ export async function reopenTask(owner: string, id: number): Promise<Task | null
   const rs = await db.execute({
     sql: `UPDATE tasks SET status = 'open', completed_at = NULL, reminders_from = ?, updated_at = ?
           WHERE owner = ? AND id = ? RETURNING *`,
+    args: [now, now, owner, id],
+  });
+  return rs.rows.length ? rowToTask(rs.rows[0]) : null;
+}
+
+/**
+ * Acknowledge a payment/subscription reminder. A repeating one moves to its
+ * next date and stays greyed out and quiet until that date's first reminder
+ * (or the date itself, with no reminders). A one-off one is marked done.
+ */
+export async function acknowledgeTask(owner: string, id: number, tz: string): Promise<Task | null> {
+  const task = await completeTask(owner, id, tz);
+  if (!task || task.status !== "open" || !task.dueAt) return task;
+  const lead = Math.max(0, ...task.reminders);
+  const back = Date.parse(task.dueAt) - lead * 60_000;
+  if (back <= Date.now()) return task;
+  const at = new Date(back).toISOString();
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: `UPDATE tasks SET quiet_until = ?, reminders_from = ? WHERE owner = ? AND id = ? RETURNING *`,
+    args: [at, at, owner, id],
+  });
+  return rowToTask(rs.rows[0]);
+}
+
+/**
+ * Defer a reminder: the date stays put, it goes quiet (greyed out, no
+ * reminders or nags) for `minutes`, then a reminder fires.
+ */
+export async function deferTask(owner: string, id: number, minutes: number): Promise<Task | null> {
+  const at = new Date(Date.now() + minutes * 60_000).toISOString();
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: `UPDATE tasks SET quiet_until = ?, reminders_from = ?, remind_at = ?, updated_at = ? WHERE owner = ? AND id = ? AND status = 'open' RETURNING *`,
+    args: [at, at, at, new Date().toISOString(), owner, id],
+  });
+  return rs.rows.length ? rowToTask(rs.rows[0]) : null;
+}
+
+/** Bring an acknowledged or deferred reminder back now (keeps the date; reminders already past stay skipped). */
+export async function unquietTask(owner: string, id: number): Promise<Task | null> {
+  const now = new Date().toISOString();
+  const db = await getDb();
+  const rs = await db.execute({
+    sql: `UPDATE tasks SET quiet_until = NULL, remind_at = CASE WHEN remind_at = quiet_until THEN NULL ELSE remind_at END,
+            reminders_from = ?, updated_at = ? WHERE owner = ? AND id = ? RETURNING *`,
     args: [now, now, owner, id],
   });
   return rs.rows.length ? rowToTask(rs.rows[0]) : null;

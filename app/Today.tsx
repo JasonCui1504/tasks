@@ -31,7 +31,7 @@ export function TodayList({ data, actions, compact }: { data: Data; actions: Act
         </h4>
         <ul className="plain-list">
           {list.map((t) => (
-            <TaskRow key={t.id} task={t} now={data.now} tz={data.tz} compact={compact} onToggle={() => actions.toggleTask(t)} onOpen={() => actions.openTask(t)} />
+            <TaskRow key={t.id} task={t} now={data.now} tz={data.tz} compact={compact} onToggle={() => actions.toggleTask(t)} onOpen={() => actions.openTask(t)} onDefer={() => actions.deferTask(t, 24 * 60)} />
           ))}
         </ul>
       </div>

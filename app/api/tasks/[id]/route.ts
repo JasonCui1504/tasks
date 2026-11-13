@@ -1,9 +1,9 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { cleanInput, completeTask, deleteTask, getSettings, reopenTask, snoozeTask, updateTask } from "@/lib/tasks";
+import { acknowledgeTask, cleanInput, completeTask, deferTask, deleteTask, getSettings, reopenTask, snoozeTask, unquietTask, updateTask } from "@/lib/tasks";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PATCH { ...fields } edits; PATCH { action: "complete" | "reopen" | "snooze", minutes? } acts on it.
+// PATCH { ...fields } edits; PATCH { action: "complete" | "reopen" | "snooze" | "acknowledge" | "defer" | "unquiet", minutes? } acts on it.
 export async function PATCH(request: Request, { params }: Ctx) {
   const user = await currentUser();
   if (!user) return unauthorized();
@@ -13,6 +13,9 @@ export async function PATCH(request: Request, { params }: Ctx) {
   try {
     if (body.action === "complete") task = await completeTask(user, id, (await getSettings(user)).timeZone);
     else if (body.action === "reopen") task = await reopenTask(user, id);
+    else if (body.action === "acknowledge") task = await acknowledgeTask(user, id, (await getSettings(user)).timeZone);
+    else if (body.action === "defer") task = await deferTask(user, id, Math.min(60 * 24 * 60, Math.max(5, Number(body.minutes) || 1440)));
+    else if (body.action === "unquiet") task = await unquietTask(user, id);
     else if (body.action === "snooze") task = await snoozeTask(user, id, Math.max(5, Number(body.minutes) || 60));
     else task = await updateTask(user, id, cleanInput(body, true));
   } catch (err) {
