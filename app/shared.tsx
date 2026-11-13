@@ -64,7 +64,7 @@ export type Data = {
   events: CalendarEvent[];
   cards: GiftCard[];
   contacts: Contact[];
-  /** Flights, trains, cars, hotels… entered in Tracking. */
+  /** Flights, trains, cars, hotels… entered in Upcoming. */
   bookings: Booking[];
   now: Date;
   tz: string;

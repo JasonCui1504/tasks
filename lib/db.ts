@@ -119,7 +119,7 @@ const SCHEMA = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS contact_log_contact ON contact_log(owner, contact_id, contact_on)`,
-  // Tracking: bookings entered by hand (flights, trains, rental cars, hotels…).
+  // Upcoming (the "tracking" view): bookings entered by hand (flights, trains, rental cars, hotels…).
   // Dates and times are the local wall-clock ones printed on the ticket.
   `CREATE TABLE IF NOT EXISTS bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
