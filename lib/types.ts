@@ -26,8 +26,7 @@ export const CATEGORIES: { id: string; label: string; color: string }[] = [
   { id: "subscription", label: "Subscriptions", color: "#9b59d0" },
   { id: "payment", label: "Payments", color: "#d9822b" },
   { id: "personal", label: "Personal", color: "#d0558b" },
-  { id: "home", label: "Home", color: "#6b8e23" },
-  { id: "health", label: "Health", color: "#d64545" },
+  { id: "errands", label: "Errands", color: "#6b8e23" },
 ];
 
 const CUSTOM_COLORS = ["#5b7c99", "#a0785a", "#7a6fb3", "#3d9970", "#b5651d", "#8e7cc3"];
