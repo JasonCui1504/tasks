@@ -200,7 +200,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
             )}
           </div>
           {repeat !== "none" && (
-            <label className="toggle block">
+            <label className="toggle wide">
               <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
               <span>
                 Renews on its own
