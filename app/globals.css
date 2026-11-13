@@ -362,13 +362,13 @@ a {
   font-size: 14px;
   color: var(--muted);
 }
-.toggle.block {
+.toggle.wide {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   color: var(--text);
 }
-.toggle.block input {
+.toggle.wide input {
   margin-top: 2px;
 }
 
