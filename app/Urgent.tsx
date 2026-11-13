@@ -94,7 +94,7 @@ export function urgentItems(d: Data, a: Actions): Item[] {
     });
   }
 
-  // Free-cancellation deadlines in the next 3 days: bookings entered in Tracking,
+  // Free-cancellation deadlines in the next 3 days: bookings entered in Upcoming,
   // and stays/cars from travel.jascui.com itineraries. Red on the last day.
   const whenText = (days: number) => (days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`);
   for (const bk of d.bookings) {

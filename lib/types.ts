@@ -46,6 +46,7 @@ export const REMINDER_PRESETS: { minutes: number; label: string }[] = [
   { minutes: 0, label: "When due" },
   { minutes: 60, label: "1 hour before" },
   { minutes: 1440, label: "1 day before" },
+  { minutes: 2880, label: "2 days before" },
   { minutes: 4320, label: "3 days before" },
   { minutes: 10080, label: "1 week before" },
 ];

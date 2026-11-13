@@ -58,7 +58,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "events", label: "Events" },
   { id: "trips", label: "Trips" },
-  { id: "tracking", label: "Tracking" },
+  { id: "tracking", label: "Upcoming" },
   { id: "people", label: "Stay in touch" },
   { id: "cards", label: "Gift cards" },
 ];
@@ -641,7 +641,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           {tab === "tracking" && (
             <>
               <section className="card-surface trk-card">
-                <h3>Tracking</h3>
+                <h3>Upcoming</h3>
                 <TrackingView data={data} actions={actions} />
               </section>
               <section className="card-surface trk-card">

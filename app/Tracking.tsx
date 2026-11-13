@@ -5,7 +5,7 @@ import { bookingKind, type Booking, type ItineraryItem } from "@/lib/types";
 import type { Actions, Data } from "./shared";
 import { TravelConnect } from "./TravelConnect";
 
-// Tracking: every flight, train, rental car, hotel and free-cancellation
+// Upcoming (internally "tracking"): every flight, train, rental car, hotel and free-cancellation
 // deadline coming up, in one list grouped by trip. Two sources, merged:
 // - bookings entered here (the bookings table; click one to edit it), and
 // - the trip itineraries read from travel.jascui.com (read-only; click one to

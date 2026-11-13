@@ -54,7 +54,7 @@ const BASE_VIEWS: { view: BoxView; label: string }[] = [
   { view: "day", label: "Day view" },
   { view: "events", label: "Events" },
   { view: "trips", label: "Trips" },
-  { view: "tracking", label: "Tracking" },
+  { view: "tracking", label: "Upcoming" },
   { view: "tobook", label: "Still to book" },
   { view: "people", label: "Stay in touch" },
   { view: "cards", label: "Gift cards" },
