@@ -176,6 +176,8 @@ const SCHEMA = [
 const MIGRATIONS = [
   `ALTER TABLE gift_cards ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE events ADD COLUMN ends_at TEXT`,
+  // Payments/subscriptions acknowledged or deferred stay greyed out and quiet until then.
+  `ALTER TABLE tasks ADD COLUMN quiet_until TEXT`,
   // Replaced by travel_link (itineraries are read through a travel.jascui.com sign-in, not pasted links).
   `DROP TABLE IF EXISTS trip_calendars`,
 ];

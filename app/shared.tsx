@@ -8,6 +8,8 @@ import {
   REPEATS,
   URGENCIES,
   categoryInfo,
+  isQuiet,
+  isReminderTask,
   type Booking,
   type BookingInput,
   type CalendarEvent,
@@ -85,7 +87,10 @@ export type Data = {
 export type Actions = {
   openTask: (t: Task) => void;
   newTask: (draft?: TaskInput) => void;
+  /** Tick off; for payments/subscriptions, acknowledge (or bring back an acknowledged one). */
   toggleTask: (t: Task) => void;
+  /** Payments/subscriptions: grey it out and stay quiet for `minutes`, then remind again. */
+  deferTask: (t: Task, minutes: number) => void;
   /** Add a task straight away (quick-add boxes). */
   addTask: (input: TaskInput) => Promise<void>;
   openEvent: (e: CalendarEvent) => void;
@@ -145,6 +150,7 @@ export function TaskRow({
   hideCategory,
   onToggle,
   onOpen,
+  onDefer,
 }: {
   task: Task;
   now: Date;
@@ -154,14 +160,24 @@ export function TaskRow({
   hideCategory?: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  /** Shown as a "Later" button on payment/subscription rows (not compact ones). */
+  onDefer?: () => void;
 }) {
   const info = categoryInfo(t.category);
+  const reminder = isReminderTask(t) && t.status === "open";
+  const quiet = isQuiet(t, now);
+  const deferred = quiet && t.remindAt === t.quietUntil;
   const due = t.dueAt ? new Date(t.dueAt) : null;
   const overdue = t.status === "open" && due && bucketOf(t, now, tz) === "overdue";
   const repeat = REPEATS.find((r) => r.value === t.repeat);
   return (
-    <li className={`task u${t.urgency} ${t.status === "done" ? "done" : ""} ${compact ? "compact" : ""}`}>
-      <button className="check" onClick={onToggle} aria-label={t.status === "done" ? "Mark as not done" : "Mark as done"}>
+    <li className={`task u${t.urgency} ${t.status === "done" ? "done" : ""} ${quiet ? "quiet" : ""} ${compact ? "compact" : ""}`}>
+      <button
+        className={`check ${reminder ? "ack" : ""}`}
+        onClick={onToggle}
+        aria-label={reminder ? (quiet ? "Bring back now" : "Acknowledge") : t.status === "done" ? "Mark as not done" : "Mark as done"}
+        title={reminder ? (quiet ? "Bring back now" : "Acknowledge") : undefined}
+      >
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
           <path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -188,10 +204,16 @@ export function TaskRow({
             </span>
           )}
           {t.amount != null && <span>{money(t.amount)}</span>}
+          {quiet && <span>{deferred ? "Deferred" : "Acknowledged"} · back {relativeDue(new Date(t.quietUntil!), now, tz, false)}</span>}
           {trip && !compact && <span>✈ {trip.name}</span>}
-          {(t.reminders.length > 0 || t.remindAt) && due && t.status === "open" && !compact && <span className="bell" title="Reminders on">🔔</span>}
+          {(t.reminders.length > 0 || t.remindAt) && due && t.status === "open" && !quiet && !compact && <span className="bell" title="Reminders on">🔔</span>}
         </span>
       </button>
+      {reminder && !quiet && !compact && onDefer && (
+        <button className="later" onClick={onDefer} title="Remind me again tomorrow">
+          Later
+        </button>
+      )}
       {t.urgency !== 1 && !compact && <span className={`badge u${t.urgency}`}>{URGENCIES[t.urgency].label}</span>}
       {t.urgency >= 2 && compact && <span className={`udot u${t.urgency}`} title={URGENCIES[t.urgency].label} />}
     </li>

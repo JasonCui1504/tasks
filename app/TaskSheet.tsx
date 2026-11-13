@@ -9,6 +9,8 @@ import {
   URGENCIES,
   categoryInfo,
   defaultReminders,
+  isQuiet,
+  isReminderTask,
   type RepeatUnit,
   type Task,
   type TaskInput,
@@ -27,6 +29,9 @@ type Props = {
   onDelete: (task: Task) => Promise<void>;
   onSnooze: (task: Task, minutes: number) => Promise<void>;
   onComplete: (task: Task) => Promise<void>;
+  /** Payments/subscriptions: acknowledge (or bring back an acknowledged/deferred one). */
+  onAcknowledge: (task: Task) => Promise<void>;
+  onDefer: (task: Task, minutes: number) => Promise<void>;
 };
 
 const ALL_DAY_HOUR = "09:00";
@@ -37,7 +42,7 @@ function localInput(iso: string | null): string {
   return `${date}T${time}`;
 }
 
-export default function TaskSheet({ task, draft, trips, categories, onClose, onSave, onDelete, onSnooze, onComplete }: Props) {
+export default function TaskSheet({ task, draft, trips, categories, onClose, onSave, onDelete, onSnooze, onComplete, onAcknowledge, onDefer }: Props) {
   const init = task ?? null;
   const initialCategory = init?.category ?? draft?.category ?? "personal";
   const due = splitLocal(init?.dueAt ?? draft?.dueAt ?? null, init?.allDay ?? true);
@@ -253,7 +258,22 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
 
           {init && (
             <div className="sheet-foot">
-              {init.status === "open" && (
+              {init.status === "open" && isReminderTask(init) && (
+                <>
+                  {!isQuiet(init, new Date()) && (
+                    <div className="snooze">
+                      <span className="muted small">Defer</span>
+                      <button type="button" className="chip" onClick={() => onDefer(init, 24 * 60)}>1 day</button>
+                      <button type="button" className="chip" onClick={() => onDefer(init, 3 * 24 * 60)}>3 days</button>
+                      <button type="button" className="chip" onClick={() => onDefer(init, 7 * 24 * 60)}>1 week</button>
+                    </div>
+                  )}
+                  <button type="button" className="btn" onClick={() => onAcknowledge(init)}>
+                    {isQuiet(init, new Date()) ? "Bring back now" : init.repeat !== "none" ? "Acknowledge — move to next date" : "Acknowledge"}
+                  </button>
+                </>
+              )}
+              {init.status === "open" && !isReminderTask(init) && (
                 <>
                   <div className="snooze">
                     <span className="muted small">Snooze</span>

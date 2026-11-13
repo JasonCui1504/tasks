@@ -15,6 +15,7 @@ import {
 } from "./time";
 import {
   GIFT_CARD_ALERT_DAYS,
+  isQuiet,
   REPEATS,
   URGENCIES,
   bookingKind,
@@ -42,6 +43,9 @@ import {
 // - Reminders that were already in the past when the task was saved are skipped.
 // - Overdue tasks nag: Critical every 4 hours, High once a day.
 // - Quiet hours hold everything except Critical reminders until they end.
+// - Payments and subscriptions can be acknowledged (moves to the next date) or
+//   deferred; either way they stay quiet until quiet_until (the next date's
+//   first reminder, or the end of the deferral, which sends a reminder).
 // - Repeating tasks set to auto-renew (subscriptions, autopay bills) roll
 //   forward on their own once the date passes, with a "renewed" note.
 // - Trips from travel.jascui.com get a heads-up 2 weeks, 3 days and 1 day out.
@@ -96,7 +100,7 @@ export function reminderMessage(t: Task, now: Date, tz: string, trips: Trip[]): 
   }
   if (t.category === "subscription") {
     return overdue
-      ? { title: `${t.title} renewed ${rel}`, body: join(amountText(t), "Mark it done to move it to the next renewal.") }
+      ? { title: `${t.title} renewed ${rel}`, body: join(amountText(t), "Acknowledge it to move it to the next renewal.") }
       : {
           title: `${t.title} renews ${rel}`,
           body: join(amountText(t), when, rel === "now" ? "" : "Cancel before then if you don't want it."),
@@ -121,6 +125,8 @@ export function taskCandidates(t: Task, now: Date, s: Settings, trips: Trip[]): 
   const from = Date.parse(t.remindersFrom);
   const tag = `task-${t.id}`;
   const url = taskUrl(t);
+  // Acknowledged or deferred: nothing until it's back (a deferral then fires via remindAt).
+  if (isQuiet(t, now)) return out;
 
   if (t.remindAt) {
     const at = Date.parse(t.remindAt);
@@ -319,7 +325,7 @@ function digestCandidate(
   const p = zonedParts(now, s.timeZone);
   if (p.h < s.digestHour || p.h >= s.digestHour + 3) return null;
   const today = localDateKey(now, s.timeZone);
-  const open = tasks.filter((t) => t.status === "open" && t.dueAt);
+  const open = tasks.filter((t) => t.status === "open" && t.dueAt && !isQuiet(t, now));
   const overdue = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) < today);
   const dueToday = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) === today);
   const tripToday = trips.filter((t) => t.startDate === today);

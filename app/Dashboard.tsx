@@ -13,6 +13,8 @@ import {
   type ContactInput,
   type GiftCard,
   type GiftCardInput,
+  isQuiet,
+  isReminderTask,
   type Settings,
   type Task,
   type TaskInput,
@@ -293,6 +295,57 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     });
   }
 
+  // Payments and subscriptions are acknowledged or deferred rather than ticked off.
+  const acknowledge = useCallback(
+    async (task: Task) => {
+      try {
+        const { task: next } = await api<{ task: Task }>(`/api/tasks/${task.id}`, "PATCH", { action: "acknowledge" });
+        replace(next);
+        const repeating = next.status === "open" && next.dueAt;
+        setToast({
+          text: repeating
+            ? `Acknowledged — next ${formatDue(new Date(next.dueAt!), tz, next.allDay)}`
+            : `Acknowledged “${task.title}”`,
+          undo: async () => {
+            const body = repeating ? { dueAt: task.dueAt } : { action: "reopen" };
+            const { task: back } = await api<{ task: Task }>(`/api/tasks/${task.id}`, "PATCH", body);
+            replace(back);
+            setToast(null);
+          },
+        });
+      } catch (err) {
+        setToast({ text: (err as Error).message });
+      }
+    },
+    [replace, tz],
+  );
+
+  const defer = useCallback(
+    async (task: Task, minutes: number) => {
+      try {
+        const { task: next } = await api<{ task: Task }>(`/api/tasks/${task.id}`, "PATCH", { action: "defer", minutes });
+        replace(next);
+        setToast({
+          text: `Deferred — reminding you ${formatDue(new Date(next.quietUntil!), tz, false)}`,
+          undo: async () => {
+            replace((await api<{ task: Task }>(`/api/tasks/${task.id}`, "PATCH", { action: "unquiet" })).task);
+            setToast(null);
+          },
+        });
+      } catch (err) {
+        setToast({ text: (err as Error).message });
+      }
+    },
+    [replace, tz],
+  );
+
+  const unquiet = useCallback(
+    async (task: Task) => {
+      replace((await api<{ task: Task }>(`/api/tasks/${task.id}`, "PATCH", { action: "unquiet" })).task);
+    },
+    [replace],
+  );
+
   async function snooze(task: Task, minutes: number) {
     const { task: next } = await api<{ task: Task }>(`/api/tasks/${task.id}`, "PATCH", { action: "snooze", minutes });
     replace(next);
@@ -480,7 +533,9 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     () => ({
       openTask: (task) => setEditing({ task }),
       newTask: (draft = {}) => setEditing({ task: null, draft }),
-      toggleTask: (t) => (t.status === "done" ? reopen(t) : complete(t)),
+      toggleTask: (t) =>
+        t.status === "done" ? reopen(t) : !isReminderTask(t) ? complete(t) : isQuiet(t, new Date()) ? unquiet(t) : acknowledge(t),
+      deferTask: (t, minutes) => defer(t, minutes),
       addTask,
       openEvent: (event) => setEventSheet({ event }),
       newEvent: (date, times) => setEventSheet({ event: null, date, times }),
@@ -532,7 +587,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
         if (focus?.trip != null) setFocusTrip(focus.trip);
       },
     }),
-    [reopen, complete, addTask, logContactToday, setTab, replace],
+    [reopen, complete, acknowledge, defer, unquiet, addTask, logContactToday, setTab, replace],
   );
 
   // ---- tab counts ----
@@ -671,6 +726,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
           onComplete={async (t) => {
             setEditing(null);
             await complete(t);
+          }}
+          onAcknowledge={async (t) => {
+            setEditing(null);
+            await (isQuiet(t, new Date()) ? unquiet(t) : acknowledge(t));
+          }}
+          onDefer={async (t, minutes) => {
+            setEditing(null);
+            await defer(t, minutes);
           }}
         />
       )}
