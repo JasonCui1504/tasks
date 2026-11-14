@@ -163,6 +163,15 @@ const SCHEMA = [
   // Signed in to travel.jascui.com to read trip itineraries: the travel app's
   // session token, plus the password encrypted with TASKS_SESSION_SECRET so the
   // session can be renewed when it expires (every 30 days). Deleted on Disconnect.
+  // Tasks made automatically (free-cancellation deadlines), by where they came from,
+  // so a moved deadline moves its task and a deleted one isn't made again.
+  `CREATE TABLE IF NOT EXISTS task_sources (
+    owner TEXT NOT NULL,
+    source TEXT NOT NULL,
+    task_id INTEGER NOT NULL,
+    due_on TEXT NOT NULL,
+    PRIMARY KEY (owner, source)
+  )`,
   `CREATE TABLE IF NOT EXISTS travel_link (
     owner TEXT PRIMARY KEY,
     username TEXT NOT NULL,

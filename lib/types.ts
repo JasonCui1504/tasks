@@ -331,5 +331,3 @@ export type BookingInput = Partial<
   Pick<Booking, "kind" | "name" | "number" | "from" | "to" | "startDate" | "startTime" | "endDate" | "endTime" | "confirmation" | "cancelBy" | "status" | "tripId" | "cost" | "notes">
 >;
 
-/** Days before a free-cancellation deadline to send a heads-up. */
-export const CANCEL_ALERT_DAYS = [7, 2, 0];

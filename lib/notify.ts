@@ -3,6 +3,8 @@ import { briefPushText, buildBrief, type BriefInput, type BriefMode } from "./br
 import { sendToUser, type PushPayload } from "./push";
 import { getSettings, listTasks } from "./tasks";
 import { getTrips } from "./travel";
+import { syncCancelTasks } from "./cancelTasks";
+import { listItineraries } from "./itinerary";
 import { listBookings, listContacts, listEvents, listGiftCards } from "./lists";
 import {
   daysBetween,
@@ -20,14 +22,11 @@ import {
   isQuiet,
   REPEATS,
   URGENCIES,
-  bookingKind,
-  CANCEL_ALERT_DAYS,
   categoryInfo,
   contactDueOn,
   frequencyLabel,
   type CalendarEvent,
   type Contact,
-  type Booking,
   type GiftCard,
   type Settings,
   type Task,
@@ -56,7 +55,8 @@ import {
 // - Trips from travel.jascui.com get a heads-up 2 weeks, 3 days and 1 day out.
 // - Events remind at (start − offset), like tasks.
 // - Gift cards with money left get a heads-up 30, 7 and 1 day before they expire.
-// - Tracked bookings with a free-cancellation date get a heads-up 7 and 2 days before, and on the day.
+// - Free-cancellation deadlines (bookings here and travel itineraries) are Critical Trips tasks
+//   (lib/cancelTasks.ts), synced each run, so they remind like any task: a day before.
 // - Stay in touch: a nudge the day someone is due, then once a week until you log it.
 // - A morning (9 AM) and evening (9 PM) summary: today/tomorrow, payments and
 //   renewals, and the week ahead (lib/brief.ts). Times are in Settings.
@@ -244,29 +244,6 @@ export function eventCandidates(e: CalendarEvent, now: Date, s: Settings): Candi
   }));
 }
 
-export function bookingCandidates(b: Booking, now: Date, s: Settings): Candidate[] {
-  if (!b.cancelBy || b.status !== "booked") return [];
-  const days = daysBetween(localDateKey(now, s.timeZone), b.cancelBy);
-  if (days < 0) return [];
-  const hit = CANCEL_ALERT_DAYS.filter((d) => days <= d).sort((a, b) => a - b);
-  const label = [b.name, b.number].filter(Boolean).join(" ") || bookingKind(b.kind).label;
-  const when = days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
-  return hit.map((d, i) => ({
-    key: `b:${b.id}:${b.cancelBy}:${d}`,
-    taskId: null,
-    critical: false,
-    payload:
-      i === 0
-        ? {
-            title: `Last day to cancel ${label} ${days === 0 ? "is today" : when}`,
-            body: `Free cancellation ends ${formatDateKey(b.cancelBy!)}.`,
-            url: `/?booking=${b.id}`,
-            tag: `booking-${b.id}`,
-          }
-        : { title: "", body: "", url: "/", tag: "skip" },
-  }));
-}
-
 export function giftCardCandidates(c: GiftCard, now: Date, s: Settings): Candidate[] {
   if (c.status !== "active" || !c.expiresOn || c.balance <= 0) return [];
   const days = daysBetween(localDateKey(now, s.timeZone), c.expiresOn);
@@ -392,6 +369,12 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
   const result: RunResult = [];
   for (const owner of await owners()) {
     const s = await getSettings(owner);
+    // Free-cancellation deadlines → tasks (travel ones only when the itineraries could be read).
+    try {
+      const itin = await listItineraries(owner);
+      const ok = itin.status.connected && !itin.status.error;
+      await syncCancelTasks(owner, await listBookings(owner), ok ? itin.itineraries : null, s.timeZone, now);
+    } catch {}
     let tasks = await listTasks(owner);
     const renewed = await autoRenew(owner, tasks, now, s);
     if (renewed.length) tasks = await listTasks(owner);
@@ -405,7 +388,6 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
       ...(s.tripAlerts ? tripCandidates(trips, open, now, s) : []),
       ...events.flatMap((e) => eventCandidates(e, now, s)),
       ...cards.flatMap((c) => giftCardCandidates(c, now, s)),
-      ...bookings.flatMap((b) => bookingCandidates(b, now, s)),
       ...contacts.flatMap((c) => contactCandidates(c, now, s)),
     ];
     candidates.push(...summaryCandidates({ tasks, events, trips, contacts, cards, bookings, now, tz: s.timeZone }, s));
