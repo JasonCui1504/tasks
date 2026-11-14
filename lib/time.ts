@@ -99,21 +99,46 @@ export function money(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-/** "today", "tomorrow", "in 3 days", "yesterday", "2 days ago", or minutes/hours when within the day. */
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+
+/**
+ * A span of whole days, exact rather than rounded: "5 days", "3 weeks, 4 days",
+ * "2 months, 1 week", "1 year, 2 months". Never rounds up.
+ */
+export function spanText(days: number): string {
+  days = Math.abs(Math.trunc(days));
+  if (days < 14) return plural(days, "day");
+  if (days < 60) {
+    const w = Math.floor(days / 7);
+    const d = days % 7;
+    return d ? `${plural(w, "week")}, ${plural(d, "day")}` : plural(w, "week");
+  }
+  if (days < 365) {
+    const m = Math.floor(days / 30);
+    const w = Math.floor((days - m * 30) / 7);
+    return w ? `${plural(m, "month")}, ${plural(w, "week")}` : plural(m, "month");
+  }
+  const y = Math.floor(days / 365);
+  const m = Math.floor((days - y * 365) / 30);
+  return m ? `${plural(y, "year")}, ${plural(m, "month")}` : plural(y, "year");
+}
+
+/** "today", "tomorrow", "in 3 days", "in 2 weeks, 4 days", "yesterday", or hours/minutes when within the day. */
 export function relativeDue(due: Date, now: Date, tz: string, allDay: boolean): string {
   const diff = due.getTime() - now.getTime();
   const days = daysBetween(localDateKey(now, tz), localDateKey(due, tz));
   if (!allDay && Math.abs(diff) < 12 * 3_600_000 && (days === 0 || Math.abs(diff) < 3 * 3_600_000)) {
-    const mins = Math.round(Math.abs(diff) / 60_000);
-    const amount = mins < 60 ? `${mins} min` : `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? "" : "s"}`;
+    const mins = Math.floor(Math.abs(diff) / 60_000);
     if (mins < 1) return "now";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    const amount = h === 0 ? `${m} min` : m ? `${plural(h, "hour")} ${m} min` : plural(h, "hour");
     return diff >= 0 ? `in ${amount}` : `${amount} ago`;
   }
   if (days === 0) return "today";
   if (days === 1) return "tomorrow";
   if (days === -1) return "yesterday";
-  if (days > 1) return days < 14 ? `in ${days} days` : `in ${Math.floor(days / 7)} weeks`;
-  return -days < 14 ? `${-days} days ago` : `${Math.floor(-days / 7)} weeks ago`;
+  return days > 0 ? `in ${spanText(days)}` : `${spanText(days)} ago`;
 }
 
 export function formatDue(due: Date, tz: string, allDay: boolean, withWeekday = true): string {
