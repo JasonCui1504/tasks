@@ -163,6 +163,15 @@ const SCHEMA = [
   // Signed in to travel.jascui.com to read trip itineraries: the travel app's
   // session token, plus the password encrypted with TASKS_SESSION_SECRET so the
   // session can be renewed when it expires (every 30 days). Deleted on Disconnect.
+  // Tasks made automatically (free-cancellation deadlines), by where they came from,
+  // so a moved deadline moves its task and a deleted one isn't made again.
+  `CREATE TABLE IF NOT EXISTS task_sources (
+    owner TEXT NOT NULL,
+    source TEXT NOT NULL,
+    task_id INTEGER NOT NULL,
+    due_on TEXT NOT NULL,
+    PRIMARY KEY (owner, source)
+  )`,
   `CREATE TABLE IF NOT EXISTS travel_link (
     owner TEXT PRIMARY KEY,
     username TEXT NOT NULL,
@@ -181,6 +190,8 @@ const MIGRATIONS = [
   `ALTER TABLE events ADD COLUMN ends_at TEXT`,
   // Payments/subscriptions acknowledged or deferred stay greyed out and quiet until then.
   `ALTER TABLE tasks ADD COLUMN quiet_until TEXT`,
+  // The desktop grid layout, so it follows the account rather than one browser's storage.
+  `ALTER TABLE settings ADD COLUMN grid_layout TEXT`,
   // Replaced by travel_link (itineraries are read through a travel.jascui.com sign-in, not pasted links).
   `DROP TABLE IF EXISTS trip_calendars`,
 ];

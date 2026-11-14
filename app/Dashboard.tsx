@@ -52,6 +52,8 @@ type Props = {
   initialEvents: CalendarEvent[];
   initialContacts: Contact[];
   initialBookings: Booking[];
+  /** The desktop grid layout saved to the account, if any. */
+  initialLayout: unknown;
   vapidKey: string | null;
   travel: { configured: boolean; url: string };
 };
@@ -73,7 +75,7 @@ const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 type TaskSheetState = { task: Task | null; draft?: TaskInput };
 
-export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, initialBookings, vapidKey, travel }: Props) {
+export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, initialBookings, initialLayout, vapidKey, travel }: Props) {
   const [tab, setTabState] = useState<Tab>("today");
   const [tasks, setTasks] = useState(initialTasks);
   const [trips, setTrips] = useState(initialTrips);
@@ -102,9 +104,11 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   // Trip itineraries load after the page, so a slow travel app never holds it up.
   const loadItineraries = useCallback(async () => {
     try {
-      const r = await api<{ itineraries: TripItinerary[]; status: Data["travelLink"] }>("/api/itinerary", "GET");
+      const r = await api<{ itineraries: TripItinerary[]; status: Data["travelLink"]; tasksChanged?: boolean }>("/api/itinerary", "GET");
       setItineraries(r.itineraries);
       setTravelLink(r.status);
+      // Free-cancellation deadlines on the trips become tasks: pick up any just made or moved.
+      if (r.tasksChanged) setTasks((await api<{ tasks: Task[] }>("/api/tasks", "GET")).tasks);
     } catch {}
   }, []);
 
@@ -461,18 +465,26 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     return [...list].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.startTime.localeCompare(b.startTime) || a.id - b.id);
   }
 
+  /** A booking's free-cancellation date makes/moves/drops a task on the server: pick that up. */
+  const reloadTasks = () =>
+    api<{ tasks: Task[] }>("/api/tasks", "GET")
+      .then((r) => setTasks(r.tasks))
+      .catch(() => {});
+
   async function saveBooking(input: BookingInput, existing: Booking | null) {
     const { booking } = existing
       ? await api<{ booking: Booking }>(`/api/bookings/${existing.id}`, "PATCH", input)
       : await api<{ booking: Booking }>("/api/bookings", "POST", input);
     setBookings((list) => sortBookings([...list.filter((b) => b.id !== booking.id), booking]));
     setBookingSheet(null);
+    reloadTasks();
   }
 
   async function removeBooking(booking: Booking) {
     await api(`/api/bookings/${booking.id}`, "DELETE");
     setBookings((list) => list.filter((b) => b.id !== booking.id));
     setBookingSheet(null);
+    reloadTasks();
     setToast({
       text: "Booking deleted",
       undo: async () => {
@@ -480,6 +492,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
         const input: BookingInput = { kind, name, number, from, to, startDate, startTime, endDate, endTime, confirmation, cancelBy, status, tripId, cost, notes };
         const { booking: back } = await api<{ booking: Booking }>("/api/bookings", "POST", input);
         setBookings((list) => sortBookings([...list, back]));
+        reloadTasks();
         setToast(null);
       },
     });
@@ -644,6 +657,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       {/* Computer: the grid workspace. */}
       <div className="desktop-only">
         <GridWorkspace
+          initialLayout={initialLayout}
           data={data}
           actions={actions}
           onToast={(text, undo) => setToast({ text, undo })}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { daysBetween, formatDateKey, localDateKey, money } from "@/lib/time";
+import { daysBetween, formatDateKey, localDateKey, money, spanText } from "@/lib/time";
 import type { GiftCard, GiftCardInput } from "@/lib/types";
 import { Field, useSheet } from "./form";
 
@@ -17,7 +17,7 @@ function expiryText(days: number | null, expiresOn: string | null): string {
   if (days < 0) return `Expired ${formatDateKey(expiresOn)}`;
   if (days === 0) return "Expires today";
   if (days === 1) return "Expires tomorrow";
-  return `Expires in ${days < 60 ? `${days} days` : `${Math.round(days / 30)} months`} · ${formatDateKey(expiresOn)}`;
+  return `Expires in ${spanText(days)} · ${formatDateKey(expiresOn)}`;
 }
 
 type ViewProps = {

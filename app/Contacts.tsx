@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { daysBetween, formatDateKey, localDateKey } from "@/lib/time";
+import { daysBetween, formatDateKey, localDateKey, spanText } from "@/lib/time";
 import { CONTACT_FREQUENCIES, contactDueOn, frequencyLabel, type Contact, type ContactInput, type ContactLog } from "@/lib/types";
 import { api } from "./api-client";
 import { Field, splitLocal, useSheet } from "./form";
@@ -9,10 +9,7 @@ import { Field, splitLocal, useSheet } from "./form";
 function agoText(days: number): string {
   if (days <= 0) return "today";
   if (days === 1) return "yesterday";
-  if (days < 14) return `${days} days ago`;
-  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
-  if (days < 365) return `${Math.round(days / 30)} months ago`;
-  return `over a year ago`;
+  return `${spanText(days)} ago`;
 }
 
 /** Days until due (negative = overdue), or null when never logged. */
@@ -27,7 +24,7 @@ function dueText(days: number | null): { text: string; tone: "" | "warn" | "dang
   if (days < 0) return { text: `${-days} day${days === -1 ? "" : "s"} overdue`, tone: "danger" };
   if (days === 0) return { text: "Due today", tone: "warn" };
   if (days === 1) return { text: "Due tomorrow", tone: "" };
-  return { text: days < 14 ? `Due in ${days} days` : `Due in ${Math.round(days / 7)} weeks`, tone: "" };
+  return { text: `Due in ${spanText(days)}`, tone: "" };
 }
 
 const todayKey = () => splitLocal(new Date().toISOString(), true).date;
