@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { briefPushText, buildBrief, type BriefInput, type BriefMode } from "./brief";
 import { sendToUser, type PushPayload } from "./push";
 import { getSettings, listTasks } from "./tasks";
 import { getTrips } from "./travel";
@@ -31,7 +32,6 @@ import {
   type Task,
   type Trip,
   isSubscription,
-  isTodo,
 } from "./types";
 
 // Decides which notifications are due right now and sends each exactly once.
@@ -57,7 +57,8 @@ import {
 // - Gift cards with money left get a heads-up 30, 7 and 1 day before they expire.
 // - Tracked bookings with a free-cancellation date get a heads-up 7 and 2 days before, and on the day.
 // - Stay in touch: a nudge the day someone is due, then once a week until you log it.
-// - A morning summary lists what's due today and overdue, and today's events.
+// - A morning (9 AM) and evening (9 PM) summary: today/tomorrow, payments and
+//   renewals, and the week ahead (lib/brief.ts). Times are in Settings.
 
 export type Candidate = { key: string; taskId: number | null; payload: PushPayload; critical: boolean };
 
@@ -317,53 +318,24 @@ export function contactCandidates(c: Contact, now: Date, s: Settings): Candidate
   ];
 }
 
-function digestCandidate(
-  tasks: Task[],
-  trips: Trip[],
-  now: Date,
-  s: Settings,
-  events: CalendarEvent[] = [],
-  contacts: Contact[] = [],
-): Candidate | null {
-  if (s.digestHour == null) return null;
-  const p = zonedParts(now, s.timeZone);
-  if (p.h < s.digestHour || p.h >= s.digestHour + 3) return null;
-  const today = localDateKey(now, s.timeZone);
-  const open = tasks.filter((t) => isTodo(t) && t.dueAt && !isQuiet(t, now));
-  const renewing = tasks.filter((t) => t.status === "open" && isSubscription(t) && !isQuiet(t, now) && t.dueAt && localDateKey(new Date(t.dueAt), s.timeZone) <= today);
-  const overdue = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) < today);
-  const dueToday = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) === today);
-  const tripToday = trips.filter((t) => t.startDate === today);
-  const eventsToday = events.filter((e) => localDateKey(new Date(e.startsAt), s.timeZone) === today);
-  const reachOut = contacts.filter((c) => c.lastContactOn && contactDueOn(c)! <= today);
-  if (!overdue.length && !dueToday.length && !tripToday.length && !eventsToday.length && !reachOut.length && !renewing.length) return null;
-  const head = [
-    dueToday.length && `${dueToday.length} due today`,
-    overdue.length && `${overdue.length} overdue`,
-    tripToday.length && `${tripToday[0].name} starts today`,
-    renewing.length && (renewing.length === 1 ? `${renewing[0].title} renews today` : `${renewing.length} subscriptions renew today`),
-    eventsToday.length &&
-      (eventsToday.length === 1
-        ? `${eventsToday[0].title}${eventsToday[0].allDay ? "" : ` at ${new Date(eventsToday[0].startsAt).toLocaleTimeString("en-US", { timeZone: s.timeZone, hour: "numeric", minute: "2-digit" })}`}`
-        : `${eventsToday.length} events`),
-    reachOut.length &&
-      `reach out to ${reachOut
-        .slice(0, 2)
-        .map((c) => c.name)
-        .join(" and ")}${reachOut.length > 2 ? ` +${reachOut.length - 2}` : ""}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  const items = [...overdue, ...dueToday]
-    .sort((a, b) => b.urgency - a.urgency)
-    .slice(0, 4)
-    .map((t) => (t.amount != null ? `${t.title} (${money(t.amount)})` : t.title));
-  return {
-    key: `d:${today}`,
-    taskId: null,
-    critical: false,
-    payload: { title: `Today: ${head[0].toUpperCase() + head.slice(1)}`, body: items.join(", ") || "Have a good day.", url: "/", tag: "digest" },
-  };
+/**
+ * The morning and evening summaries (lib/brief.ts), each once a day within
+ * three hours of its hour. They go out even in quiet hours: you picked the time.
+ */
+function summaryCandidates(input: BriefInput, s: Settings): Candidate[] {
+  const out: Candidate[] = [];
+  const h = zonedParts(input.now, s.timeZone).h;
+  const today = localDateKey(input.now, s.timeZone);
+  const slots: [BriefMode, number | null, string][] = [
+    ["morning", s.morningHour, `d:${today}`],
+    ["evening", s.eveningHour, `e:${today}`],
+  ];
+  for (const [mode, hour, key] of slots) {
+    if (hour == null || h < hour || h >= hour + 3) continue;
+    const text = briefPushText(buildBrief(input, mode));
+    out.push({ key, taskId: null, critical: true, payload: { ...text, url: `/?brief=${mode}`, tag: `brief-${mode}` } });
+  }
+  return out;
 }
 
 /** Roll auto-renewing repeating tasks past their date forward, returning the "renewed" notes. */
@@ -437,8 +409,7 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
       ...bookings.flatMap((b) => bookingCandidates(b, now, s)),
       ...contacts.flatMap((c) => contactCandidates(c, now, s)),
     ];
-    const digest = digestCandidate(open, trips, now, s, events, contacts);
-    if (digest) candidates.push(digest);
+    candidates.push(...summaryCandidates({ tasks, events, trips, contacts, cards, bookings, now, tz: s.timeZone }, s));
 
     // Overdue + due today, for the Home Screen icon badge.
     const today = localDateKey(now, s.timeZone);

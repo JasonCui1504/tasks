@@ -9,6 +9,7 @@ import { ContactsView } from "./Contacts";
 import { EventsView } from "./Events";
 import { GiftCardsView } from "./GiftCards";
 import { PackingView } from "./Packing";
+import { BriefView } from "./Brief";
 import { CardsPanel, CategoryPanel, EventsPanel, PeoplePanel } from "./Panels";
 import type { Actions, Data } from "./shared";
 import { SummaryStats, TasksTab } from "./TasksTab";
@@ -30,7 +31,7 @@ const MIN_W = 3;
 const MIN_H = 2;
 const STORE_KEY = "tasks.grid.v3";
 
-export type BoxView = "today" | "tasks" | "summary" | "urgent" | "calendar" | "day" | "events" | "trips" | "tracking" | "tobook" | "people" | "cards" | "packing" | `cat:${string}`;
+export type BoxView = "today" | "tasks" | "summary" | "urgent" | "calendar" | "day" | "events" | "trips" | "tracking" | "tobook" | "people" | "cards" | "packing" | "brief" | `cat:${string}`;
 export type Box = { id: string; view: BoxView; x: number; y: number; w: number; h: number };
 
 const DEFAULT_LAYOUT: Box[] = [
@@ -47,6 +48,7 @@ const DEFAULT_LAYOUT: Box[] = [
 
 const BASE_VIEWS: { view: BoxView; label: string }[] = [
   { view: "today", label: "Today's to-do" },
+  { view: "brief", label: "Daily summary" },
   { view: "tasks", label: "All tasks" },
   { view: "urgent", label: "Urgent" },
   { view: "summary", label: "Summary numbers" },
@@ -254,7 +256,7 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
     const cats = data.categories.filter((c) => c !== "trip").map((c) => ({ view: `cat:${c}` as BoxView, label: categoryInfo(c).label }));
     const tripPrep = data.categories.includes("trip") ? [{ view: "cat:trip" as BoxView, label: "Trip prep tasks" }] : [];
     return [
-      { label: "Tasks", options: base(["today", "tasks", "urgent", "summary"]) },
+      { label: "Tasks", options: base(["today", "brief", "tasks", "urgent", "summary"]) },
       { label: "Task categories", options: cats },
       { label: "Calendar", options: base(["calendar", "day", "events"]) },
       { label: "Travel", options: [...base(["trips", "tracking", "tobook", "packing"]), ...tripPrep] },
@@ -420,6 +422,8 @@ function BoxContent({ view, data, actions, px, hasDayView }: { view: BoxView; da
       );
     case "packing":
       return <PackingView />;
+    case "brief":
+      return <BriefView data={data} actions={actions} />;
     default:
       return view.startsWith("cat:") ? <CategoryPanel cat={view.slice(4)} data={data} actions={actions} /> : null;
   }

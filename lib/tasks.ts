@@ -269,7 +269,8 @@ const DEFAULT_SETTINGS: Settings = {
   timeZone: validTimeZone(process.env.DEFAULT_TIME_ZONE) ? process.env.DEFAULT_TIME_ZONE! : "America/New_York",
   quietStart: 22,
   quietEnd: 7,
-  digestHour: 8,
+  morningHour: 9,
+  eveningHour: 21,
   tripAlerts: true,
 };
 
@@ -282,7 +283,8 @@ export async function getSettings(owner: string): Promise<Settings> {
     timeZone: validTimeZone(r.time_zone) ? String(r.time_zone) : DEFAULT_SETTINGS.timeZone,
     quietStart: Number(r.quiet_start),
     quietEnd: Number(r.quiet_end),
-    digestHour: r.digest_hour == null ? null : Number(r.digest_hour),
+    morningHour: r.morning_hour === undefined ? DEFAULT_SETTINGS.morningHour : r.morning_hour == null ? null : Number(r.morning_hour),
+    eveningHour: r.evening_hour === undefined ? DEFAULT_SETTINGS.eveningHour : r.evening_hour == null ? null : Number(r.evening_hour),
     tripAlerts: Boolean(Number(r.trip_alerts)),
   };
 }
@@ -297,17 +299,18 @@ export async function saveSettings(owner: string, patch: Partial<Settings>): Pro
     timeZone: validTimeZone(patch.timeZone) ? patch.timeZone : cur.timeZone,
     quietStart: "quietStart" in patch ? hour(patch.quietStart, cur.quietStart) : cur.quietStart,
     quietEnd: "quietEnd" in patch ? hour(patch.quietEnd, cur.quietEnd) : cur.quietEnd,
-    digestHour:
-      "digestHour" in patch ? (patch.digestHour == null ? null : hour(patch.digestHour, 8)) : cur.digestHour,
+    morningHour: "morningHour" in patch ? (patch.morningHour == null ? null : hour(patch.morningHour, 9)) : cur.morningHour,
+    eveningHour: "eveningHour" in patch ? (patch.eveningHour == null ? null : hour(patch.eveningHour, 21)) : cur.eveningHour,
     tripAlerts: "tripAlerts" in patch ? Boolean(patch.tripAlerts) : cur.tripAlerts,
   };
   const db = await getDb();
   await db.execute({
-    sql: `INSERT INTO settings (owner, time_zone, quiet_start, quiet_end, digest_hour, trip_alerts)
-          VALUES (?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO settings (owner, time_zone, quiet_start, quiet_end, morning_hour, evening_hour, trip_alerts)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(owner) DO UPDATE SET time_zone = excluded.time_zone, quiet_start = excluded.quiet_start,
-            quiet_end = excluded.quiet_end, digest_hour = excluded.digest_hour, trip_alerts = excluded.trip_alerts`,
-    args: [owner, next.timeZone, next.quietStart, next.quietEnd, next.digestHour, next.tripAlerts ? 1 : 0],
+            quiet_end = excluded.quiet_end, morning_hour = excluded.morning_hour, evening_hour = excluded.evening_hour,
+            trip_alerts = excluded.trip_alerts`,
+    args: [owner, next.timeZone, next.quietStart, next.quietEnd, next.morningHour, next.eveningHour, next.tripAlerts ? 1 : 0],
   });
   return next;
 }

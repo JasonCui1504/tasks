@@ -174,6 +174,9 @@ const SCHEMA = [
 
 // Columns added after a table first shipped. Each fails harmlessly once the column exists.
 const MIGRATIONS = [
+  // Twice-daily summaries (9 AM and 9 PM by default); these replace digest_hour.
+  `ALTER TABLE settings ADD COLUMN morning_hour INTEGER DEFAULT 9`,
+  `ALTER TABLE settings ADD COLUMN evening_hour INTEGER DEFAULT 21`,
   `ALTER TABLE gift_cards ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE events ADD COLUMN ends_at TEXT`,
   // Payments/subscriptions acknowledged or deferred stay greyed out and quiet until then.

@@ -126,14 +126,29 @@ export default function SettingsSheet({ user, settings, vapidKey, travelConfigur
             <div className="setting-row">
               <div>
                 <strong>Morning summary</strong>
-                <p className="muted small">What&rsquo;s due today and overdue, once a day.</p>
+                <p className="muted small">Overdue, today, bills and renewals, and the week ahead. Sent even in quiet hours.</p>
               </div>
               <select
-                value={settings.digestHour ?? ""}
-                onChange={(e) => onChange({ digestHour: e.target.value === "" ? null : Number(e.target.value) })}
+                value={settings.morningHour ?? ""}
+                onChange={(e) => onChange({ morningHour: e.target.value === "" ? null : Number(e.target.value) })}
+                aria-label="Morning summary time"
               >
                 <option value="">Off</option>
                 {[5, 6, 7, 8, 9, 10, 11, 12].map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Evening summary</strong>
+                <p className="muted small">What&rsquo;s still open, tomorrow, bills and renewals, and later this week.</p>
+              </div>
+              <select
+                value={settings.eveningHour ?? ""}
+                onChange={(e) => onChange({ eveningHour: e.target.value === "" ? null : Number(e.target.value) })}
+                aria-label="Evening summary time"
+              >
+                <option value="">Off</option>
+                {[17, 18, 19, 20, 21, 22, 23].map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
               </select>
             </div>
             <div className="setting-row">

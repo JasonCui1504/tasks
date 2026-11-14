@@ -2587,3 +2587,52 @@ button.info-tile:hover {
 .panel-btn.danger-text {
   color: var(--danger);
 }
+
+/* ---------- daily summary ---------- */
+
+.brief {
+  display: grid;
+  gap: 10px;
+}
+.brief .seg {
+  justify-self: start;
+}
+.brief-section h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 2px;
+}
+.brief-section h4.danger {
+  color: var(--danger);
+}
+.brief-total {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 13px;
+}
+.mini-meta.danger {
+  color: var(--danger);
+}
+.mini-meta.warn {
+  color: var(--u2);
+}
+.brief-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 14px;
+}

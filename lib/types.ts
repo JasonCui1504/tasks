@@ -143,8 +143,9 @@ export type Settings = {
   /** Local hours; no non-critical notifications from quietStart up to quietEnd. Equal = off. */
   quietStart: number;
   quietEnd: number;
-  /** Local hour for the morning summary, or null for none. */
-  digestHour: number | null;
+  /** Local hours for the morning and evening summaries (lib/brief.ts), or null for none. */
+  morningHour: number | null;
+  eveningHour: number | null;
   tripAlerts: boolean;
 };
 

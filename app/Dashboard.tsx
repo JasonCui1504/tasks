@@ -36,6 +36,8 @@ import { UrgentCallout } from "./Urgent";
 import { GridWorkspace } from "./Grid";
 import { TasksTab, taskCounts } from "./TasksTab";
 import { TodayList } from "./Today";
+import { BriefSheet, defaultBriefMode } from "./Brief";
+import type { BriefMode } from "@/lib/brief";
 import { DayView } from "./DayView";
 import { TopInfo } from "./TopInfo";
 import { registerWorker, setBadge } from "./push-client";
@@ -89,6 +91,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
   const [contactSheet, setContactSheet] = useState<{ contact: Contact | null } | null>(null);
   const [bookingSheet, setBookingSheet] = useState<{ booking: Booking | null; draft?: BookingInput } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The morning/evening summary sheet (opened from its notification, or the Today tab). */
+  const [briefOpen, setBriefOpen] = useState<BriefMode | null>(null);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [focusTrip, setFocusTrip] = useState<number | null>(null);
   const [itineraries, setItineraries] = useState<TripItinerary[]>([]);
@@ -161,6 +165,9 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     const id = (k: string) => Number(params.get(k)) || 0;
     const [taskId, tripId, eventId, cardId, personId, bookingId] = ["task", "trip", "event", "card", "person", "booking"].map(id);
     const wanted = params.get("tab") as Tab | null;
+    const brief = params.get("brief");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the URL only works after mount
+    if (brief === "morning" || brief === "evening") setBriefOpen(brief);
     let next: Tab | null = TABS.some((t) => t.id === wanted) ? wanted : null;
     if (!next && !taskId && !tripId && !eventId && !cardId && !personId && !bookingId) {
       try {
@@ -170,7 +177,6 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     }
     if (taskId) {
       const t = initialTasks.find((x) => x.id === taskId);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the URL only works after mount
       if (t) setEditing({ task: t });
       next = "tasks";
     }
@@ -680,7 +686,14 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
 
         <main className="ws-main">
           <UrgentCallout data={data} actions={actions} />
-          {tab === "today" && <TodayList data={data} actions={actions} />}
+          {tab === "today" && (
+            <>
+              <button className="brief-link" onClick={() => setBriefOpen(defaultBriefMode(new Date(), tz))}>
+                📋 Daily summary <span className="muted">— today, bills &amp; renewals, the week ahead</span>
+              </button>
+              <TodayList data={data} actions={actions} />
+            </>
+          )}
           {tab === "tasks" && <TasksTab data={data} actions={actions} />}
           {tab === "calendar" && (
             <>
@@ -769,6 +782,8 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       {contactSheet && (
         <ContactSheet contact={contactSheet.contact} onClose={() => setContactSheet(null)} onSave={saveContact} onDelete={removeContact} onChanged={replaceContact} />
       )}
+
+      {briefOpen && <BriefSheet data={data} actions={actions} mode={briefOpen} onClose={() => setBriefOpen(null)} />}
 
       {settingsOpen && (
         <SettingsSheet
