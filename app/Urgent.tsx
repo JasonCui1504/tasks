@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { daysBetween, formatDateKey, formatDue, localDateKey, money, relativeDue } from "@/lib/time";
-import { URGENCIES, bookingKind, contactDueOn, isTodo } from "@/lib/types";
+import { URGENCIES, bookingKind, contactDueOn, isQuiet, isTodo } from "@/lib/types";
 import { bucketOf, capitalize, type Actions, type Data } from "./shared";
 
 type Item = { key: string; text: string; sub: string; tone: "red" | "amber"; onClick: () => void };
@@ -11,7 +11,8 @@ type Item = { key: string; text: string; sub: string; tone: "red" | "amber"; onC
 export function urgentItems(d: Data, a: Actions): Item[] {
   const today = localDateKey(d.now, d.tz);
   const items: Item[] = [];
-  const open = d.tasks.filter(isTodo);
+  // To-dos only (not subscriptions); acknowledged or deferred payments wait until they're back.
+  const open = d.tasks.filter((t) => isTodo(t) && !isQuiet(t, d.now));
 
   const overdue = open.filter((t) => bucketOf(t, d.now, d.tz) === "overdue").sort((x, y) => y.urgency - x.urgency || (x.dueAt! < y.dueAt! ? -1 : 1));
   for (const t of overdue)
@@ -94,7 +95,7 @@ export function urgentItems(d: Data, a: Actions): Item[] {
     });
   }
 
-  // Free-cancellation deadlines in the next 3 days: bookings entered in Tracking,
+  // Free-cancellation deadlines in the next 3 days: bookings entered in Upcoming,
   // and stays/cars from travel.jascui.com itineraries. Red on the last day.
   const whenText = (days: number) => (days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`);
   for (const bk of d.bookings) {

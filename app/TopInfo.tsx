@@ -1,22 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { greeting } from "@/lib/greeting";
 import { daysBetween, localDateKey, zonedParts } from "@/lib/time";
 import type { Data } from "./shared";
 
-// The workspace's top line: a time-of-day message, a live clock, Boulder and
-// Stanford side by side (local time, weather now / today / tomorrow, sunrise
+// The workspace's top line: a time-of-day message, a live clock, where you are
+// now (browser location, falling back to DC), Boulder and Stanford side by side (local time, weather now / today / tomorrow, sunrise
 // and sunset — Open-Meteo, free and keyless, fetched by the browser), and the
 // countdown to the next trip from travel.jascui.com.
 
-type Place = { id: "boulder" | "stanford"; name: string; lat: number; lon: number; tz: string };
+type Place = { id: string; name: string; lat: number; lon: number; tz: string };
 const PLACES: Place[] = [
   { id: "boulder", name: "Boulder", lat: 40.015, lon: -105.2705, tz: "America/Denver" },
   { id: "stanford", name: "Stanford", lat: 37.4275, lon: -122.1697, tz: "America/Los_Angeles" },
 ];
 
+const DC: Place = { id: "here", name: "DC", lat: 38.9072, lon: -77.0369, tz: "America/New_York" };
+const HERE_KEY = "tasks.here.v1";
+
+/** Rough distance in km, to skip the "here" tile when you're in Boulder or Stanford. */
+function km(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
+  const r = Math.PI / 180;
+  const x = (b.lon - a.lon) * r * Math.cos(((a.lat + b.lat) / 2) * r);
+  const y = (b.lat - a.lat) * r;
+  return Math.sqrt(x * x + y * y) * 6371;
+}
+
+/** Where this device is now: the browser's location (rounded to ~1 km) named by a keyless reverse geocoder; DC until known or if location is off. */
+function useHere(): Place {
+  const [here, setHere] = useState<{ name: string; lat: number; lon: number }>(DC);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HERE_KEY) ?? "null");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the last place only exists in the browser
+      if (saved && typeof saved.name === "string" && Number.isFinite(saved.lat) && Number.isFinite(saved.lon)) setHere(saved);
+    } catch {}
+    if (!("geolocation" in navigator)) return;
+    let stop = false;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = Math.round(pos.coords.latitude * 100) / 100;
+        const lon = Math.round(pos.coords.longitude * 100) / 100;
+        let name = "Here";
+        try {
+          const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+          const j = await r.json();
+          name = j.principalSubdivisionCode === "US-DC" ? "DC" : j.city || j.locality || name;
+        } catch {}
+        if (stop) return;
+        const next = { name, lat, lon };
+        setHere(next);
+        try {
+          localStorage.setItem(HERE_KEY, JSON.stringify(next));
+        } catch {}
+      },
+      () => {},
+      { maximumAge: 30 * 60_000, timeout: 15_000 },
+    );
+    return () => {
+      stop = true;
+    };
+  }, []);
+  // Open-Meteo works out the time zone from the coordinates ("auto").
+  return useMemo(() => ({ id: "here", name: here.name, lat: here.lat, lon: here.lon, tz: "auto" }), [here.name, here.lat, here.lon]);
+}
+
 type Weather = {
+  /** The place's time zone as Open-Meteo reports it (needed when asked for "auto"). */
+  tz: string;
   now: { temp: number; code: number } | null;
   days: { max: number; min: number; code: number; rain: number; sunrise: string; sunset: string }[];
 };
@@ -55,6 +107,7 @@ function useWeather(place: Place): Weather | null {
         if (stop) return;
         const d = j.daily ?? {};
         setWeather({
+          tz: j.timezone || place.tz,
           now: j.current ? { temp: Math.round(j.current.temperature_2m), code: j.current.weather_code } : null,
           days: (d.time ?? []).map((_: string, i: number) => ({
             max: Math.round(d.temperature_2m_max[i]),
@@ -84,10 +137,11 @@ function timeIn(now: Date, tz: string, seconds = false) {
 function CityTile({ place, clock }: { place: Place; clock: Date | null }) {
   const weather = useWeather(place);
   const [w0, w1] = weather?.days ?? [];
+  const tz = place.tz === "auto" ? weather?.tz : place.tz;
   return (
     <div className="info-tile city" title={`${place.name} weather`}>
       <span className="info-label">
-        {place.name} · <span className="mono">{clock ? timeIn(clock, place.tz) : "--:--"}</span>
+        {place.name} · <span className="mono">{clock && tz ? timeIn(clock, tz) : "--:--"}</span>
       </span>
       <span className="info-value">
         {w0 ? (
@@ -124,6 +178,9 @@ export function TopInfo({ data, compact }: { data: Data; compact?: boolean }) {
     return () => clearInterval(t);
   }, []);
 
+  const here = useHere();
+  const places = PLACES.some((p) => km(p, here) < 40) ? PLACES : [here, ...PLACES];
+
   const now = clock ?? data.now;
   const parts = zonedParts(now, data.tz);
   const weekday = new Date(Date.UTC(parts.y, parts.m - 1, parts.d)).getUTCDay();
@@ -141,7 +198,7 @@ export function TopInfo({ data, compact }: { data: Data; compact?: boolean }) {
         <span className="info-label">Now</span>
         <span className="info-value mono">{clock ? timeIn(clock, data.tz, true) : "--:--:--"}</span>
       </div>
-      {PLACES.map((p) => (
+      {places.map((p) => (
         <CityTile key={p.id} place={p} clock={clock} />
       ))}
       <div className="info-tile">

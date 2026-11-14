@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { localDateKey } from "@/lib/time";
-import { isReminder, isTodo } from "@/lib/types";
+import { isSubscription, isTodo } from "@/lib/types";
 import { bucketOf, byDue, TaskRow, type Actions, type Data } from "./shared";
 
 /** The day's to-do list: overdue + due today, today's events, and a box to add to today. */
@@ -11,7 +11,7 @@ export function TodayList({ data, actions, compact }: { data: Data; actions: Act
   const today = localDateKey(data.now, data.tz);
   const open = data.tasks.filter(isTodo);
   // Subscriptions renewing today: shown as a heads-up, not a to-do.
-  const renewing = data.tasks.filter((t) => t.status === "open" && isReminder(t) && t.dueAt && bucketOf(t, data.now, data.tz) === "today").sort(byDue);
+  const renewing = data.tasks.filter((t) => t.status === "open" && isSubscription(t) && t.dueAt && bucketOf(t, data.now, data.tz) === "today").sort(byDue);
   const overdue = open.filter((t) => bucketOf(t, data.now, data.tz) === "overdue").sort(byDue);
   const due = open.filter((t) => bucketOf(t, data.now, data.tz) === "today").sort(byDue);
   const doneToday = data.tasks.filter((t) => (t.status === "done" && t.completedAt && localDateKey(new Date(t.completedAt), data.tz) === today) || (t.lastDoneAt && localDateKey(new Date(t.lastDoneAt), data.tz) === today && isTodo(t)));
@@ -34,7 +34,7 @@ export function TodayList({ data, actions, compact }: { data: Data; actions: Act
         </h4>
         <ul className="plain-list">
           {list.map((t) => (
-            <TaskRow key={t.id} task={t} now={data.now} tz={data.tz} compact={compact} onToggle={() => actions.toggleTask(t)} onOpen={() => actions.openTask(t)} />
+            <TaskRow key={t.id} task={t} now={data.now} tz={data.tz} compact={compact} onToggle={() => actions.toggleTask(t)} onOpen={() => actions.openTask(t)} onDefer={() => actions.deferTask(t, 24 * 60)} />
           ))}
         </ul>
       </div>

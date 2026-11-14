@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { daysBetween, localDateKey, money, monthlyCost } from "@/lib/time";
-import { URGENCIES, categoryInfo, isReminder, isTodo } from "@/lib/types";
+import { URGENCIES, categoryInfo, isSubscription, isTodo } from "@/lib/types";
 import { BUCKET_LABELS, BUCKET_ORDER, Chip, Stat, TaskRow, bucketOf, byDue, type Actions, type Data } from "./shared";
 
 export type When = "all" | "overdue" | "today" | "week";
@@ -66,7 +66,7 @@ export function TasksTab({ data, actions, noStats }: { data: Data; actions: Acti
     const pool = showDone ? tasks.filter((t) => t.status === "done") : open;
     return pool.filter((t) => {
       // Reminders (subscriptions) only show when you pick their category.
-      if (category === "all" && isReminder(t)) return false;
+      if (category === "all" && isSubscription(t)) return false;
       if (category !== "all" && t.category !== category && !(category === "trip" && t.tripId != null)) return false;
       if (t.urgency < minUrgency) return false;
       if (!showDone && when !== "all") {
@@ -192,6 +192,7 @@ export function TasksTab({ data, actions, noStats }: { data: Data; actions: Acti
                   trip={t.tripId != null ? trips.find((x) => x.id === t.tripId) : undefined}
                   onToggle={() => actions.toggleTask(t)}
                   onOpen={() => actions.openTask(t)}
+                  onDefer={() => actions.deferTask(t, 24 * 60)}
                 />
               ))}
             </ul>

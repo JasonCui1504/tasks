@@ -8,7 +8,9 @@ import {
   REPEATS,
   URGENCIES,
   categoryInfo,
-  isReminder,
+  isQuiet,
+  isReminderTask,
+  isSubscription,
   type Booking,
   type BookingInput,
   type CalendarEvent,
@@ -41,7 +43,7 @@ export function bucketOf(t: Task, now: Date, tz: string): Bucket {
   const today = localDateKey(now, tz);
   const key = localDateKey(due, tz);
   // A reminder is never overdue: once its date passes it's about to roll forward.
-  if (key < today || (!t.allDay && due < now)) return isReminder(t) ? "today" : "overdue";
+  if (key < today || (!t.allDay && due < now)) return isSubscription(t) ? "today" : "overdue";
   const d = daysBetween(today, key);
   if (d === 0) return "today";
   if (d === 1) return "tomorrow";
@@ -66,7 +68,7 @@ export type Data = {
   events: CalendarEvent[];
   cards: GiftCard[];
   contacts: Contact[];
-  /** Flights, trains, cars, hotels… entered in Tracking. */
+  /** Flights, trains, cars, hotels… entered in Upcoming. */
   bookings: Booking[];
   now: Date;
   tz: string;
@@ -87,7 +89,10 @@ export type Data = {
 export type Actions = {
   openTask: (t: Task) => void;
   newTask: (draft?: TaskInput) => void;
+  /** Tick off; for payments/subscriptions, acknowledge (or bring back an acknowledged one). */
   toggleTask: (t: Task) => void;
+  /** Payments/subscriptions: grey it out and stay quiet for `minutes`, then remind again. */
+  deferTask: (t: Task, minutes: number) => void;
   /** Add a task straight away (quick-add boxes). */
   addTask: (input: TaskInput) => Promise<void>;
   openEvent: (e: CalendarEvent) => void;
@@ -153,6 +158,7 @@ export function TaskRow({
   hideCategory,
   onToggle,
   onOpen,
+  onDefer,
 }: {
   task: Task;
   now: Date;
@@ -162,28 +168,29 @@ export function TaskRow({
   hideCategory?: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  /** Shown as a "Later" button on payment/subscription rows (not compact ones). */
+  onDefer?: () => void;
 }) {
   const info = categoryInfo(t.category);
+  const reminder = isReminderTask(t) && t.status === "open";
+  const quiet = isQuiet(t, now);
+  const deferred = quiet && t.remindAt === t.quietUntil;
   const due = t.dueAt ? new Date(t.dueAt) : null;
-  const reminder = isReminder(t);
-  const overdue = !reminder && t.status === "open" && due && bucketOf(t, now, tz) === "overdue";
+  const sub = isSubscription(t) && t.status === "open";
+  const overdue = !sub && t.status === "open" && due && bucketOf(t, now, tz) === "overdue";
   const repeat = REPEATS.find((r) => r.value === t.repeat);
   return (
-    <li className={`task u${t.urgency} ${t.status === "done" ? "done" : ""} ${compact ? "compact" : ""}`}>
-      {reminder ? (
-        // A reminder: nothing to tick off, it renews on its own.
-        <span className="check reminder-mark" title="Reminder — renews on its own" aria-hidden>
-          <svg viewBox="0 0 24 24" width="13" height="13">
-            <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-          </svg>
-        </span>
-      ) : (
-        <button className="check" onClick={onToggle} aria-label={t.status === "done" ? "Mark as not done" : "Mark as done"}>
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
-            <path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
+    <li className={`task u${t.urgency} ${t.status === "done" ? "done" : ""} ${quiet ? "quiet" : ""} ${compact ? "compact" : ""}`}>
+      <button
+        className={`check ${reminder ? "ack" : ""}`}
+        onClick={onToggle}
+        aria-label={reminder ? (quiet ? "Bring back now" : "Acknowledge") : t.status === "done" ? "Mark as not done" : "Mark as done"}
+        title={reminder ? (quiet ? "Bring back now" : "Acknowledge") : undefined}
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+          <path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
       <button className="task-main" onClick={onOpen}>
         <span className="task-title">{t.title}</span>
         <span className="task-meta">
@@ -193,13 +200,13 @@ export function TaskRow({
               {info.label}
             </span>
           )}
-          {due && reminder && t.status === "open" && (
+          {due && sub && (
             <span>
               {renewText(due, now, tz, t.allDay)}
               {!compact && ` · ${formatDue(due, tz, t.allDay)}`}
             </span>
           )}
-          {due && !(reminder && t.status === "open") && (
+          {due && !sub && (
             <span className={overdue ? "danger" : ""}>
               {t.status === "done" || compact
                 ? capitalize(compact ? relativeDue(due, now, tz, t.allDay) : formatDue(due, tz, t.allDay))
@@ -212,10 +219,16 @@ export function TaskRow({
             </span>
           )}
           {t.amount != null && <span>{money(t.amount)}</span>}
+          {quiet && <span>{deferred ? "Deferred" : "Acknowledged"} · back {relativeDue(new Date(t.quietUntil!), now, tz, false)}</span>}
           {trip && !compact && <span>✈ {trip.name}</span>}
-          {!reminder && (t.reminders.length > 0 || t.remindAt) && due && t.status === "open" && !compact && <span className="bell" title="Reminders on">🔔</span>}
+          {(t.reminders.length > 0 || t.remindAt) && due && t.status === "open" && !quiet && !compact && <span className="bell" title="Reminders on">🔔</span>}
         </span>
       </button>
+      {reminder && !quiet && !compact && onDefer && (
+        <button className="later" onClick={onDefer} title="Remind me again tomorrow">
+          Later
+        </button>
+      )}
       {t.urgency !== 1 && !compact && <span className={`badge u${t.urgency}`}>{URGENCIES[t.urgency].label}</span>}
       {t.urgency >= 2 && compact && <span className={`udot u${t.urgency}`} title={URGENCIES[t.urgency].label} />}
     </li>

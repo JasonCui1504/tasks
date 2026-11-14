@@ -119,7 +119,7 @@ const SCHEMA = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS contact_log_contact ON contact_log(owner, contact_id, contact_on)`,
-  // Tracking: bookings entered by hand (flights, trains, rental cars, hotels…).
+  // Upcoming (the "tracking" view): bookings entered by hand (flights, trains, rental cars, hotels…).
   // Dates and times are the local wall-clock ones printed on the ticket.
   `CREATE TABLE IF NOT EXISTS bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,6 +176,8 @@ const SCHEMA = [
 const MIGRATIONS = [
   `ALTER TABLE gift_cards ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE events ADD COLUMN ends_at TEXT`,
+  // Payments/subscriptions acknowledged or deferred stay greyed out and quiet until then.
+  `ALTER TABLE tasks ADD COLUMN quiet_until TEXT`,
   // Replaced by travel_link (itineraries are read through a travel.jascui.com sign-in, not pasted links).
   `DROP TABLE IF EXISTS trip_calendars`,
 ];

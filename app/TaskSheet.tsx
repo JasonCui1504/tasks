@@ -9,7 +9,9 @@ import {
   URGENCIES,
   categoryInfo,
   defaultReminders,
-  isReminder,
+  isQuiet,
+  isReminderTask,
+  isSubscription,
   type RepeatUnit,
   type Task,
   type TaskInput,
@@ -28,6 +30,9 @@ type Props = {
   onDelete: (task: Task) => Promise<void>;
   onSnooze: (task: Task, minutes: number) => Promise<void>;
   onComplete: (task: Task) => Promise<void>;
+  /** Payments/subscriptions: acknowledge (or bring back an acknowledged/deferred one). */
+  onAcknowledge: (task: Task) => Promise<void>;
+  onDefer: (task: Task, minutes: number) => Promise<void>;
 };
 
 const ALL_DAY_HOUR = "09:00";
@@ -38,7 +43,7 @@ function localInput(iso: string | null): string {
   return `${date}T${time}`;
 }
 
-export default function TaskSheet({ task, draft, trips, categories, onClose, onSave, onDelete, onSnooze, onComplete }: Props) {
+export default function TaskSheet({ task, draft, trips, categories, onClose, onSave, onDelete, onSnooze, onComplete, onAcknowledge, onDefer }: Props) {
   const init = task ?? null;
   const initialCategory = init?.category ?? draft?.category ?? "personal";
   const due = splitLocal(init?.dueAt ?? draft?.dueAt ?? null, init?.allDay ?? true);
@@ -107,7 +112,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
           repeat,
           repeatEvery,
           // Subscriptions are reminders: they always roll forward on their own.
-          autoRenew: repeat !== "none" && (autoRenew || isReminder({ category: finalCategory })),
+          autoRenew: repeat !== "none" && (autoRenew || isSubscription({ category: finalCategory })),
           amount: amount === "" ? null : Number(amount),
           reminders,
           remindAt: remindAt ? new Date(remindAt).toISOString() : null,
@@ -122,7 +127,7 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
     }
   }
 
-  const reminder = isReminder({ category });
+  const reminder = isSubscription({ category });
   const money = showAmount || category === "payment" || category === "subscription" || amount !== "";
 
   return (
@@ -204,10 +209,10 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
           </div>
           {reminder ? (
             <p className="muted small">
-              A reminder, not a to-do: there&apos;s nothing to tick off. {repeat !== "none" ? "It rolls to the next renewal on its own" : "It clears itself once the date passes"}, and you get the alerts below before {repeat !== "none" ? "each renewal" : "it"}.
+              {repeat !== "none" ? "Rolls to the next renewal on its own if you don't acknowledge it" : "Clears itself once the date passes"}; you get the alerts below before {repeat !== "none" ? "each renewal" : "it"}.
             </p>
           ) : repeat !== "none" && (
-            <label className="toggle block">
+            <label className="toggle wide">
               <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
               <span>
                 Renews on its own
@@ -260,7 +265,22 @@ export default function TaskSheet({ task, draft, trips, categories, onClose, onS
 
           {init && (
             <div className="sheet-foot">
-              {init.status === "open" && !isReminder(init) && (
+              {init.status === "open" && isReminderTask(init) && (
+                <>
+                  {!isQuiet(init, new Date()) && (
+                    <div className="snooze">
+                      <span className="muted small">Defer</span>
+                      <button type="button" className="chip" onClick={() => onDefer(init, 24 * 60)}>1 day</button>
+                      <button type="button" className="chip" onClick={() => onDefer(init, 3 * 24 * 60)}>3 days</button>
+                      <button type="button" className="chip" onClick={() => onDefer(init, 7 * 24 * 60)}>1 week</button>
+                    </div>
+                  )}
+                  <button type="button" className="btn" onClick={() => onAcknowledge(init)}>
+                    {isQuiet(init, new Date()) ? "Bring back now" : init.repeat !== "none" ? "Acknowledge — move to next date" : "Acknowledge"}
+                  </button>
+                </>
+              )}
+              {init.status === "open" && !isReminderTask(init) && (
                 <>
                   <div className="snooze">
                     <span className="muted small">Snooze</span>

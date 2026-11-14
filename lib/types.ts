@@ -26,8 +26,7 @@ export const CATEGORIES: { id: string; label: string; color: string }[] = [
   { id: "subscription", label: "Subscriptions", color: "#9b59d0" },
   { id: "payment", label: "Payments", color: "#d9822b" },
   { id: "personal", label: "Personal", color: "#d0558b" },
-  { id: "home", label: "Home", color: "#6b8e23" },
-  { id: "health", label: "Health", color: "#d64545" },
+  { id: "errands", label: "Errands", color: "#6b8e23" },
 ];
 
 const CUSTOM_COLORS = ["#5b7c99", "#a0785a", "#7a6fb3", "#3d9970", "#b5651d", "#8e7cc3"];
@@ -46,22 +45,23 @@ export const REMINDER_PRESETS: { minutes: number; label: string }[] = [
   { minutes: 0, label: "When due" },
   { minutes: 60, label: "1 hour before" },
   { minutes: 1440, label: "1 day before" },
+  { minutes: 2880, label: "2 days before" },
   { minutes: 4320, label: "3 days before" },
   { minutes: 10080, label: "1 week before" },
 ];
 
 /**
- * Subscriptions are reminders, not to-dos: nothing to tick off. They renew on
- * their own (rolling to the next date once it passes), alert ahead of each
- * renewal, and stay out of to-do lists, overdue counts and the badge.
+ * Subscriptions renew on their own: like payments they can be acknowledged or
+ * deferred (isReminderTask), but one left alone rolls to its next renewal once
+ * the date passes, and they stay out of to-do lists, overdue counts and the badge.
  */
-export function isReminder(t: { category: string }): boolean {
+export function isSubscription(t: { category: string }): boolean {
   return t.category === "subscription";
 }
 
-/** An open task that needs doing (not a reminder). */
+/** An open task that needs doing (not a subscription). */
 export function isTodo(t: { category: string; status: string }): boolean {
-  return t.status === "open" && !isReminder(t);
+  return t.status === "open" && !isSubscription(t);
 }
 
 export function defaultReminders(category: string): number[] {
@@ -96,7 +96,19 @@ export type Task = {
   updatedAt: string;
   /** Reminders scheduled before this moment are skipped (they were already past when set). */
   remindersFrom: string;
+  /** Acknowledged or deferred: shown greyed out, and quiet, until this moment. */
+  quietUntil: string | null;
 };
+
+/** Payments and subscriptions are reminders: acknowledged or deferred rather than ticked off. */
+export function isReminderTask(t: Pick<Task, "category">): boolean {
+  return t.category === "payment" || t.category === "subscription";
+}
+
+/** Acknowledged or deferred, and not back yet. */
+export function isQuiet(t: Pick<Task, "quietUntil" | "status">, now: Date): boolean {
+  return t.status === "open" && !!t.quietUntil && Date.parse(t.quietUntil) > now.getTime();
+}
 
 export type TaskInput = Partial<
   Pick<

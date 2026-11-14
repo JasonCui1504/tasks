@@ -15,6 +15,7 @@ import {
 } from "./time";
 import {
   GIFT_CARD_ALERT_DAYS,
+  isQuiet,
   REPEATS,
   URGENCIES,
   bookingKind,
@@ -29,7 +30,7 @@ import {
   type Settings,
   type Task,
   type Trip,
-  isReminder,
+  isSubscription,
   isTodo,
 } from "./types";
 
@@ -44,6 +45,9 @@ import {
 // - Reminders that were already in the past when the task was saved are skipped.
 // - Overdue tasks nag: Critical every 4 hours, High once a day.
 // - Quiet hours hold everything except Critical reminders until they end.
+// - Payments and subscriptions can be acknowledged (moves to the next date) or
+//   deferred; either way they stay quiet until quiet_until (the next date's
+//   first reminder, or the end of the deferral, which sends a reminder).
 // - Repeating tasks set to auto-renew (autopay bills) and every subscription roll
 //   forward on their own once the date passes, with a "renewed" note.
 //   Subscriptions are reminders, not to-dos: a one-off one clears itself once
@@ -125,6 +129,8 @@ export function taskCandidates(t: Task, now: Date, s: Settings, trips: Trip[]): 
   const from = Date.parse(t.remindersFrom);
   const tag = `task-${t.id}`;
   const url = taskUrl(t);
+  // Acknowledged or deferred: nothing until it's back (a deferral then fires via remindAt).
+  if (isQuiet(t, now)) return out;
 
   if (t.remindAt) {
     const at = Date.parse(t.remindAt);
@@ -323,8 +329,8 @@ function digestCandidate(
   const p = zonedParts(now, s.timeZone);
   if (p.h < s.digestHour || p.h >= s.digestHour + 3) return null;
   const today = localDateKey(now, s.timeZone);
-  const open = tasks.filter((t) => isTodo(t) && t.dueAt);
-  const renewing = tasks.filter((t) => t.status === "open" && isReminder(t) && t.dueAt && localDateKey(new Date(t.dueAt), s.timeZone) <= today);
+  const open = tasks.filter((t) => isTodo(t) && t.dueAt && !isQuiet(t, now));
+  const renewing = tasks.filter((t) => t.status === "open" && isSubscription(t) && !isQuiet(t, now) && t.dueAt && localDateKey(new Date(t.dueAt), s.timeZone) <= today);
   const overdue = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) < today);
   const dueToday = open.filter((t) => localDateKey(new Date(t.dueAt!), s.timeZone) === today);
   const tripToday = trips.filter((t) => t.startDate === today);
@@ -365,12 +371,12 @@ async function autoRenew(owner: string, tasks: Task[], now: Date, s: Settings): 
   const db = await getDb();
   const out: Candidate[] = [];
   for (const t of tasks) {
-    if (t.status !== "open" || !t.dueAt || !(t.autoRenew || isReminder(t))) continue;
+    if (t.status !== "open" || !t.dueAt || !(t.autoRenew || isSubscription(t))) continue;
     // Give the "renews now" reminder a moment to go out first.
     if (Date.parse(t.dueAt) > now.getTime() - 30 * 60_000) continue;
     if (t.repeat === "none") {
       // A one-off reminder has done its job once the date passes: clear it quietly.
-      if (isReminder(t)) {
+      if (isSubscription(t)) {
         const nowIso = now.toISOString();
         await db.execute({ sql: "UPDATE tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE owner = ? AND id = ?", args: [nowIso, nowIso, owner, t.id] });
       }
@@ -436,7 +442,7 @@ export async function runNotifications(now = new Date()): Promise<RunResult> {
 
     // Overdue + due today, for the Home Screen icon badge.
     const today = localDateKey(now, s.timeZone);
-    const badge = open.filter((t) => !isReminder(t) && t.dueAt && localDateKey(new Date(t.dueAt), s.timeZone) <= today).length;
+    const badge = open.filter((t) => !isSubscription(t) && t.dueAt && localDateKey(new Date(t.dueAt), s.timeZone) <= today).length;
     const quiet = inQuiet(zonedParts(now, s.timeZone).h, s);
     let sent = 0;
     let held = 0;

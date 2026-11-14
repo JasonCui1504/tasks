@@ -19,7 +19,7 @@ import { UrgentCallout } from "./Urgent";
 
 // The desktop workspace: a grid that always fills the window (COLS × ROWS cells,
 // so a smaller window means smaller cells). Boxes snap to cells; drag one by its
-// title bar to move it, drag any corner to resize it, and pick what it shows from
+// title bar to move it, drag any edge or corner to resize it, and pick what it shows from
 // its title menu. Boxes never overlap: dropping onto one box that fits your old
 // spot swaps them; otherwise boxes in the way shrink back, and any squeezed below
 // the minimum size are removed (with Undo). The layout is saved per device.
@@ -54,7 +54,7 @@ const BASE_VIEWS: { view: BoxView; label: string }[] = [
   { view: "day", label: "Day view" },
   { view: "events", label: "Events" },
   { view: "trips", label: "Trips" },
-  { view: "tracking", label: "Tracking" },
+  { view: "tracking", label: "Upcoming" },
   { view: "tobook", label: "Still to book" },
   { view: "people", label: "Stay in touch" },
   { view: "cards", label: "Gift cards" },
@@ -95,10 +95,11 @@ function valid(saved: unknown): saved is Box[] {
   );
 }
 
-type Corner = "nw" | "ne" | "sw" | "se";
+/** Which edge(s) a resize drags: a corner moves two, a side one. */
+type Edge = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w";
 type Drag = {
   id: string;
-  mode: "move" | Corner;
+  mode: "move" | Edge;
   startX: number;
   startY: number;
   orig: Box;
@@ -195,13 +196,15 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
       if (drag.mode === "move") {
         preview = { ...o, x: Math.max(0, Math.min(COLS - o.w, o.x + dx)), y: Math.max(0, Math.min(ROWS - o.h, o.y + dy)) };
       } else {
-        // Any corner: the opposite corner stays put.
-        const left = drag.mode === "nw" || drag.mode === "sw";
-        const top = drag.mode === "nw" || drag.mode === "ne";
+        // Only the dragged edge(s) move; the opposite side stays put.
+        const left = drag.mode.includes("w");
+        const right = drag.mode.includes("e");
+        const top = drag.mode.includes("n");
+        const bottom = drag.mode.includes("s");
         const x = left ? Math.max(0, Math.min(o.x + o.w - MIN_W, o.x + dx)) : o.x;
         const y = top ? Math.max(0, Math.min(o.y + o.h - MIN_H, o.y + dy)) : o.y;
-        const w = left ? o.x + o.w - x : Math.max(MIN_W, Math.min(COLS - o.x, o.w + dx));
-        const h = top ? o.y + o.h - y : Math.max(MIN_H, Math.min(ROWS - o.y, o.h + dy));
+        const w = left ? o.x + o.w - x : right ? Math.max(MIN_W, Math.min(COLS - o.x, o.w + dx)) : o.w;
+        const h = top ? o.y + o.h - y : bottom ? Math.max(MIN_H, Math.min(ROWS - o.y, o.h + dy)) : o.h;
         preview = { ...o, x, y, w, h };
       }
       if (preview.x === drag.preview.x && preview.y === drag.preview.y && preview.w === drag.preview.w && preview.h === drag.preview.h) return;
@@ -245,10 +248,26 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
     save([...layout, box]);
   }
 
-  const viewOptions = useMemo(
-    () => [...BASE_VIEWS, ...data.categories.map((c) => ({ view: `cat:${c}` as BoxView, label: c === "trip" ? "Trip prep tasks" : categoryInfo(c).label }))],
-    [data.categories],
-  );
+  // The box menus, grouped under headings so a view is easy to find.
+  const viewGroups = useMemo(() => {
+    const base = (views: BoxView[]) => views.map((v) => BASE_VIEWS.find((b) => b.view === v)!);
+    const cats = data.categories.filter((c) => c !== "trip").map((c) => ({ view: `cat:${c}` as BoxView, label: categoryInfo(c).label }));
+    const tripPrep = data.categories.includes("trip") ? [{ view: "cat:trip" as BoxView, label: "Trip prep tasks" }] : [];
+    return [
+      { label: "Tasks", options: base(["today", "tasks", "urgent", "summary"]) },
+      { label: "Task categories", options: cats },
+      { label: "Calendar", options: base(["calendar", "day", "events"]) },
+      { label: "Travel", options: [...base(["trips", "tracking", "tobook", "packing"]), ...tripPrep] },
+      { label: "People & money", options: base(["people", "cards"]) },
+    ].filter((g) => g.options.length > 0);
+  }, [data.categories]);
+  const viewMenu = viewGroups.map((g) => (
+    <optgroup key={g.label} label={g.label}>
+      {g.options.map((o) => (
+        <option key={o.view} value={o.view}>{o.label}</option>
+      ))}
+    </optgroup>
+  ));
 
   const hasDayView = layout.some((b) => b.view === "day");
 
@@ -268,9 +287,7 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
             + Add box
             <select value="" onChange={(e) => e.target.value && addBox(e.target.value as BoxView)} aria-label="Add a box">
               <option value="">Add a box showing…</option>
-              {viewOptions.map((o) => (
-                <option key={o.view} value={o.view}>{o.label}</option>
-              ))}
+              {viewMenu}
             </select>
           </label>
           <button className="btn" onClick={() => confirm("Reset the workspace to the default layout?") && save(DEFAULT_LAYOUT)}>
@@ -297,16 +314,18 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
                   <header className="box-head" onPointerDown={(e) => startDrag(e, box, "move")}>
                     <span className="grip" aria-hidden>⠿</span>
                     {box.view.startsWith("cat:") && <span className="dot" style={{ background: categoryInfo(box.view.slice(4)).color }} />}
-                    <select
-                      className="panel-select"
-                      value={box.view}
-                      onChange={(e) => save(layout.map((b) => (b.id === box.id ? { ...b, view: e.target.value as BoxView } : b)))}
-                      aria-label="What this box shows"
-                    >
-                      {viewOptions.map((o) => (
-                        <option key={o.view} value={o.view}>{o.label}</option>
-                      ))}
-                    </select>
+                    {/* The title is drawn by the span; the invisible select on top opens a plain-case, grouped menu. */}
+                    <label className="panel-pick">
+                      <span className="panel-pick-label">{box.view === "cat:trip" ? "Trip prep tasks" : viewLabel(box.view)}</span>
+                      <select
+                        className="panel-select"
+                        value={box.view}
+                        onChange={(e) => save(layout.map((b) => (b.id === box.id ? { ...b, view: e.target.value as BoxView } : b)))}
+                        aria-label="What this box shows"
+                      >
+                        {viewMenu}
+                      </select>
+                    </label>
                     <div className="panel-tools">
                       <AddButton view={box.view} actions={actions} data={data} />
                       <button className="panel-btn" onClick={() => save(layout.filter((b) => b.id !== box.id))} aria-label="Remove box" title="Remove box">
@@ -318,6 +337,9 @@ export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
                     <BoxContent view={box.view} data={data} actions={actions} px={px} hasDayView={hasDayView} />
                   </div>
                 </div>
+                {(["n", "s", "e", "w"] as const).map((side) => (
+                  <span key={side} className={`resize-edge ${side}`} onPointerDown={(e) => startDrag(e, box, side)} aria-hidden />
+                ))}
                 {(["nw", "ne", "sw", "se"] as const).map((c) => (
                   <span key={c} className={`resize-handle ${c}`} onPointerDown={(e) => startDrag(e, box, c)} aria-hidden title="Drag to resize" />
                 ))}
