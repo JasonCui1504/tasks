@@ -112,8 +112,8 @@ export function relativeDue(due: Date, now: Date, tz: string, allDay: boolean): 
   if (days === 0) return "today";
   if (days === 1) return "tomorrow";
   if (days === -1) return "yesterday";
-  if (days > 1) return days < 14 ? `in ${days} days` : `in ${Math.round(days / 7)} weeks`;
-  return -days < 14 ? `${-days} days ago` : `${Math.round(-days / 7)} weeks ago`;
+  if (days > 1) return days < 14 ? `in ${days} days` : `in ${Math.floor(days / 7)} weeks`;
+  return -days < 14 ? `${-days} days ago` : `${Math.floor(-days / 7)} weeks ago`;
 }
 
 export function formatDue(due: Date, tz: string, allDay: boolean, withWeekday = true): string {

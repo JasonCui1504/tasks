@@ -1,6 +1,6 @@
 import type { Row } from "@libsql/client";
 import { getDb } from "./db";
-import { addRepeat, nextOccurrenceAfter, validTimeZone } from "./time";
+import { addRepeat, nextOccurrenceAfter, validTimeZone, zonedParts, zonedToUtc } from "./time";
 import { REPEATS, type Settings, type Task, type TaskInput, type Urgency, type SentNotification } from "./types";
 
 function str(v: unknown): string | null {
@@ -211,13 +211,19 @@ export async function reopenTask(owner: string, id: number): Promise<Task | null
 /**
  * Acknowledge a payment/subscription reminder. A repeating one moves to its
  * next date and stays greyed out and quiet until that date's first reminder
- * (or the date itself, with no reminders). A one-off one is marked done.
+ * (or the date itself, with no reminders). A payment comes back sooner if the
+ * 1st of the month it's next due in comes first, so this month's bills show
+ * from the 1st. A one-off one is marked done.
  */
 export async function acknowledgeTask(owner: string, id: number, tz: string): Promise<Task | null> {
   const task = await completeTask(owner, id, tz);
   if (!task || task.status !== "open" || !task.dueAt) return task;
   const lead = Math.max(0, ...task.reminders);
-  const back = Date.parse(task.dueAt) - lead * 60_000;
+  let back = Date.parse(task.dueAt) - lead * 60_000;
+  if (task.category === "payment") {
+    const due = zonedParts(new Date(task.dueAt), tz);
+    back = Math.min(back, zonedToUtc(due.y, due.m, 1, 0, 0, tz).getTime());
+  }
   if (back <= Date.now()) return task;
   const at = new Date(back).toISOString();
   const db = await getDb();
@@ -313,6 +319,31 @@ export async function saveSettings(owner: string, patch: Partial<Settings>): Pro
     args: [owner, next.timeZone, next.quietStart, next.quietEnd, next.morningHour, next.eveningHour, next.tripAlerts ? 1 : 0],
   });
   return next;
+}
+
+// ---- desktop grid layout (saved per account so it survives sign-in and new devices) ----
+
+export async function getGridLayout(owner: string): Promise<unknown> {
+  const db = await getDb();
+  const rs = await db.execute({ sql: "SELECT grid_layout FROM settings WHERE owner = ?", args: [owner] });
+  const raw = rs.rows[0]?.grid_layout;
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveGridLayout(owner: string, layout: unknown): Promise<void> {
+  const json = JSON.stringify(layout);
+  if (!Array.isArray(layout) || json.length > 20_000) return;
+  const db = await getDb();
+  await db.execute({
+    sql: `INSERT INTO settings (owner, time_zone, grid_layout) VALUES (?, ?, ?)
+          ON CONFLICT(owner) DO UPDATE SET grid_layout = excluded.grid_layout`,
+    args: [owner, DEFAULT_SETTINGS.timeZone, json],
+  });
 }
 
 export async function recentNotifications(owner: string, limit = 30): Promise<SentNotification[]> {

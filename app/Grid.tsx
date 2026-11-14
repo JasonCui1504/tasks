@@ -12,6 +12,7 @@ import { PackingView } from "./Packing";
 import { BriefView } from "./Brief";
 import { CardsPanel, CategoryPanel, EventsPanel, PeoplePanel } from "./Panels";
 import type { Actions, Data } from "./shared";
+import { api } from "./api-client";
 import { SummaryStats, TasksTab } from "./TasksTab";
 import { TodayList } from "./Today";
 import { ToBookView, TrackingView } from "./Tracking";
@@ -23,7 +24,8 @@ import { UrgentCallout } from "./Urgent";
 // title bar to move it, drag any edge or corner to resize it, and pick what it shows from
 // its title menu. Boxes never overlap: dropping onto one box that fits your old
 // spot swaps them; otherwise boxes in the way shrink back, and any squeezed below
-// the minimum size are removed (with Undo). The layout is saved per device.
+// the minimum size are removed (with Undo). The layout is saved to the account
+// (and to localStorage as a fallback), so signing in again keeps it.
 
 export const COLS = 24;
 export const ROWS = 16;
@@ -146,6 +148,8 @@ function swapTarget(preview: Box, orig: Box, layout: Box[]): Box | null {
 }
 
 type Props = {
+  /** The layout saved to the account, or null if none yet. */
+  initialLayout: unknown;
   data: Data;
   actions: Actions;
   onToast: (text: string, undo?: () => void) => void;
@@ -153,25 +157,33 @@ type Props = {
   topActions: React.ReactNode;
 };
 
-export function GridWorkspace({ data, actions, onToast, topActions }: Props) {
-  const [layout, setLayout] = useState<Box[]>(DEFAULT_LAYOUT);
+export function GridWorkspace({ initialLayout, data, actions, onToast, topActions }: Props) {
+  const fromAccount = valid(initialLayout) ? initialLayout : null;
+  const [layout, setLayout] = useState<Box[]>(fromAccount ?? DEFAULT_LAYOUT);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const areaRef = useRef<HTMLDivElement>(null);
 
+  // No layout on the account yet: use one this browser saved before, and copy it up.
+  const hadAccountLayout = fromAccount !== null;
   useEffect(() => {
+    if (hadAccountLayout) return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? "null");
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the saved layout is only readable after mount
-      if (valid(saved)) setLayout(saved);
+      if (valid(saved)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- the saved layout is only readable after mount
+        setLayout(saved);
+        api("/api/layout", "PUT", { layout: saved }).catch(() => {});
+      }
     } catch {}
-  }, []);
+  }, [hadAccountLayout]);
 
   const save = useCallback((next: Box[]) => {
     setLayout(next);
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(next));
     } catch {}
+    api("/api/layout", "PUT", { layout: next }).catch(() => {});
   }, []);
 
   // Cells are a fraction of the area, so the grid always fills the window.

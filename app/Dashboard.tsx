@@ -52,6 +52,8 @@ type Props = {
   initialEvents: CalendarEvent[];
   initialContacts: Contact[];
   initialBookings: Booking[];
+  /** The desktop grid layout saved to the account, if any. */
+  initialLayout: unknown;
   vapidKey: string | null;
   travel: { configured: boolean; url: string };
 };
@@ -73,7 +75,7 @@ const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 type TaskSheetState = { task: Task | null; draft?: TaskInput };
 
-export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, initialBookings, vapidKey, travel }: Props) {
+export default function Dashboard({ user, initialTasks, initialTrips, initialSettings, initialCards, initialEvents, initialContacts, initialBookings, initialLayout, vapidKey, travel }: Props) {
   const [tab, setTabState] = useState<Tab>("today");
   const [tasks, setTasks] = useState(initialTasks);
   const [trips, setTrips] = useState(initialTrips);
@@ -644,6 +646,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       {/* Computer: the grid workspace. */}
       <div className="desktop-only">
         <GridWorkspace
+          initialLayout={initialLayout}
           data={data}
           actions={actions}
           onToast={(text, undo) => setToast({ text, undo })}
