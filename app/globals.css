@@ -621,6 +621,9 @@ a {
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
+.sheet-head > :first-child {
+  justify-self: start;
+}
 .sheet-head > :last-child {
   justify-self: end;
 }
