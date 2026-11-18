@@ -73,6 +73,21 @@ textarea {
   min-width: 0;
 }
 
+/* iPhone date/time pickers ignore width: 100% and spill past their column; empty ones also collapse. */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+}
+input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -981,12 +996,14 @@ a {
 
 /* Phones: sheets come up from the bottom, stats go 2×2. */
 @media (max-width: 600px) {
+  /* The sheet can't grow past the padded overlay, so its header stays clear of the status bar. */
   .overlay {
     align-items: flex-end;
+    padding-top: calc(env(safe-area-inset-top) + 16px);
   }
   .sheet {
     border-radius: 18px 18px 0 0;
-    max-height: calc(100vh - env(safe-area-inset-top) - 24px);
+    max-height: 100%;
     width: 100%;
   }
   .stats {
