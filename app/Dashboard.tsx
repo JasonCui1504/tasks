@@ -143,6 +143,9 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
     }
     registerWorker();
     loadItineraries();
+    // iOS ignores user-scalable=no; stop pinch zoom here so the page never ends up zoomed and shifted.
+    const noPinch = (e: Event) => e.preventDefault();
+    document.addEventListener("gesturestart", noPinch);
     const tick = setInterval(() => setNow(new Date()), 60_000);
     // While the page is on screen, pull fresh data (including trips from travel.jascui.com) every few minutes.
     const sync = setInterval(() => document.visibilityState === "visible" && refresh(), 3 * 60_000);
@@ -152,6 +155,7 @@ export default function Dashboard({ user, initialTasks, initialTrips, initialSet
       clearInterval(tick);
       clearInterval(sync);
       document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("gesturestart", noPinch);
     };
   }, [initialSettings.timeZone, refresh, loadItineraries]);
 
